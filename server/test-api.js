@@ -70,6 +70,47 @@ async function testGetPrices() {
   }
 }
 
+async function testGetTokenMetadata() {
+  try {
+    console.log('📋 Testing get token metadata...');
+    const response = await axios.get(`${BASE_URL}/token/1/${TEST_TOKENS.ethereum.WETH}`);
+    console.log('✅ Get token metadata passed:', {
+      symbol: response.data.symbol,
+      name: response.data.name,
+      decimals: response.data.decimals
+    });
+    return true;
+  } catch (error) {
+    console.error('❌ Get token metadata failed:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+async function testGetCrossChainRoutes() {
+  try {
+    console.log('🌉 Testing get cross-chain routes...');
+    const response = await axios.get(`${BASE_URL}/crosschain/routes`);
+    console.log('✅ Get cross-chain routes passed. Routes available:', response.data.routes?.length || 0);
+    return true;
+  } catch (error) {
+    console.error('❌ Get cross-chain routes failed:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+async function testGetFusionOrders() {
+  try {
+    console.log('⚡ Testing get fusion orders...');
+    const testAddress = '0x1234567890123456789012345678901234567890';
+    const response = await axios.get(`${BASE_URL}/fusion/orders/${testAddress}?limit=5`);
+    console.log('✅ Get fusion orders passed. Orders found:', response.data.orders?.length || 0);
+    return true;
+  } catch (error) {
+    console.error('❌ Get fusion orders failed:', error.response?.data || error.message);
+    return false;
+  }
+}
+
 async function runAllTests() {
   console.log('🚀 Starting 1inch API Tests...\n');
   
@@ -77,7 +118,10 @@ async function runAllTests() {
     testHealthCheck,
     testGetTokens,
     testGetQuote,
-    testGetPrices
+    testGetPrices,
+    testGetTokenMetadata,
+    testGetCrossChainRoutes,
+    testGetFusionOrders
   ];
   
   let passed = 0;
@@ -108,5 +152,8 @@ module.exports = {
   testGetTokens,
   testGetQuote,
   testGetPrices,
+  testGetTokenMetadata,
+  testGetCrossChainRoutes,
+  testGetFusionOrders,
   runAllTests
 }; 
