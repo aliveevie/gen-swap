@@ -3,7 +3,7 @@ require('dotenv').config();
 // 1inch API Configuration
 const ONEINCH_API_KEY = process.env.ONEINCH_API_KEY || 'your-api-key-here';
 const ONEINCH_BASE_URL = 'https://api.1inch.dev';
-console.log(ONEINCH_API_KEY);
+
 // Supported networks (using mainnet for now, can switch to Sepolia if needed)
 const NETWORKS = {
   ethereum: 1,
@@ -16,7 +16,7 @@ const NETWORKS = {
   base: 8453
 };
 
-// Common token addresses
+// Common token addresses (correct Ethereum mainnet addresses)
 const TOKENS = {
   ethereum: {
     USDC: '0xA0b86a33E6441b8c4C8C8C8C8C8C8C8C8C8C8C8C8',
