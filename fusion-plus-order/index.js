@@ -26,6 +26,52 @@ if (!makerPrivateKey || !makerAddress || !nodeUrl || !devPortalApiKey) {
 const web3Instance = new Web3(nodeUrl);
 const blockchainProvider = new PrivateKeyProviderConnector(makerPrivateKey, web3Instance);
 
+// Function to check wallet balance
+async function checkWalletBalance() {
+    try {
+        console.log('🔍 Checking wallet balance...');
+        
+        // Check ETH balance
+        const ethBalance = await web3Instance.eth.getBalance(makerAddress);
+        console.log('💰 ETH Balance:', web3Instance.utils.fromWei(ethBalance, 'ether'), 'ETH');
+        
+        // Check USDC balance
+        const usdcContract = new web3Instance.eth.Contract([
+            {
+                "constant": true,
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "balance", "type": "uint256"}],
+                "type": "function"
+            },
+            {
+                "constant": true,
+                "inputs": [
+                    {"name": "_owner", "type": "address"},
+                    {"name": "_spender", "type": "address"}
+                ],
+                "name": "allowance",
+                "outputs": [{"name": "", "type": "uint256"}],
+                "type": "function"
+            }
+        ], srcTokenAddress);
+        
+        const usdcBalance = await usdcContract.methods.balanceOf(makerAddress).call();
+        console.log('💵 USDC Balance:', usdcBalance, 'wei');
+        console.log('💵 USDC Balance:', (BigInt(usdcBalance) / BigInt(10**6)).toString(), 'USDC (6 decimals)');
+        
+        // Check allowance
+        const allowance = await usdcContract.methods.allowance(makerAddress, '0x111111125421ca6dc452d289314280a0f8842a65').call();
+        console.log('🔐 USDC Allowance for 1inch router:', allowance, 'wei');
+        console.log('🔐 USDC Allowance for 1inch router:', (BigInt(allowance) / BigInt(10**6)).toString(), 'USDC (6 decimals)');
+        
+        return { ethBalance, usdcBalance, allowance };
+    } catch (error) {
+        console.error('❌ Error checking balance:', error.message);
+        throw error;
+    }
+}
+
 const sdk = new SDK({
     url: 'https://api.1inch.dev/fusion-plus',
     authKey: devPortalApiKey,
@@ -52,6 +98,8 @@ const approveABI = [{
 
 (async () => {
 
+    // Check wallet balance first
+    await checkWalletBalance();
 
     const invert = false;
 
@@ -68,19 +116,21 @@ const approveABI = [{
 
     // Approve tokens for spending.
     // If you need to approve the tokens before posting an order, this code can be uncommented for first run.
-    // const provider = new JsonRpcProvider(nodeUrl);
-    // const tkn = new Contract(srcTokenAddress, approveABI, new Wallet(makerPrivateKey, provider));
-    // await tkn.approve(
-    //     '0x111111125421ca6dc452d289314280a0f8842a65', // aggregation router v6
-    //     (2n**256n - 1n) // unlimited allowance
-    // );
+    console.log('🔐 Approving USDC for 1inch router...');
+    const provider = new JsonRpcProvider(nodeUrl);
+    const tkn = new Contract(srcTokenAddress, approveABI, new Wallet(makerPrivateKey, provider));
+    await tkn.approve(
+        '0x111111125421ca6dc452d289314280a0f8842a65', // aggregation router v6
+        (2n**256n - 1n) // unlimited allowance
+    );
+    console.log('✅ USDC approval successful');
 
     const params = {
         srcChainId,
         dstChainId,
         srcTokenAddress,
         dstTokenAddress,
-        amount: '1000000000000000000', // Adjust this to the correct decimal precision of the source token
+        amount: '1000000', // 1 USDC (6 decimals) - USDC uses 6 decimals, not 18
         enableEstimate: true,
         walletAddress: makerAddress
     };
