@@ -4,16 +4,10 @@
   "description": "1inch Fusion+ Cross-Chain Swapper Implementation",
   "main": "functions/Swapper.js",
   "scripts": {
-    "test-setup": "node functions/Swapper.js test-setup",
-    "check-balance": "node functions/Swapper.js check-balance",
-    "swap": "node functions/Swapper.js swap",
-    "test-arbitrum-base": "node functions/Swapper.js swap arbitrum base USDC USDC 1000000",
-    "test-ethereum-polygon": "node functions/Swapper.js swap ethereum polygon WETH USDC 1000000000000000000",
-    "test-polygon-arbitrum": "node functions/Swapper.js swap polygon arbitrum USDC USDC 1000000",
-    "test-bsc-ethereum": "node functions/Swapper.js swap bsc ethereum USDC USDC 1000000",
-    "test-avalanche-base": "node functions/Swapper.js swap avalanche base USDC USDC 1000000",
-    "test-optimism-polygon": "node functions/Swapper.js swap optimism polygon USDC USDC 1000000",
-    "test-fantom-ethereum": "node functions/Swapper.js swap fantom ethereum USDC USDC 1000000"
+    "test-setup": "node cli.js test-setup",
+    "check": "node cli.js check",
+    "swap": "node cli.js swap",
+    "help": "node cli.js"
   },
   "keywords": ["1inch", "fusion", "cross-chain", "swap", "defi"],
   "author": "GenSwap Team",

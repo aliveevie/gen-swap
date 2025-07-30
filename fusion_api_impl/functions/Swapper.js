@@ -241,14 +241,42 @@ class CrossChainSwapper {
     return '0x' + Buffer.from(randomBytes(32)).toString('hex');
   }
 
+  // Convert human-readable amount to proper decimal format
+  convertHumanAmountToWei(amount, tokenSymbol) {
+    const tokenDecimals = {
+      'USDC': 6,
+      'USDT': 6,
+      'DAI': 18,
+      'WETH': 18,
+      'WBTC': 8,
+      'ETH': 18,
+      'MATIC': 18,
+      'BNB': 18,
+      'AVAX': 18,
+      'OP': 18,
+      'FTM': 18
+    };
+
+    const decimals = tokenDecimals[tokenSymbol] || 18;
+    const multiplier = Math.pow(10, decimals);
+    const weiAmount = Math.floor(parseFloat(amount) * multiplier);
+    
+    console.log(`🔄 Converting ${amount} ${tokenSymbol} to ${weiAmount} wei (${decimals} decimals)`);
+    return weiAmount.toString();
+  }
+
   // Execute cross-chain swap
-  async executeCrossChainSwap(fromNetwork, toNetwork, fromToken, toToken, amount) {
+  async executeCrossChainSwap(fromNetwork, toNetwork, fromToken, toToken, humanAmount) {
     console.log(`🚀 Starting cross-chain swap...`);
     console.log(`📤 From: ${NETWORKS[fromNetwork].name} (${fromToken})`);
     console.log(`📥 To: ${NETWORKS[toNetwork].name} (${toToken})`);
-    console.log(`💰 Amount: ${amount}`);
+    console.log(`💰 Human Amount: ${humanAmount} ${fromToken}`);
     console.log(`📍 Wallet: ${this.makerAddress}`);
     console.log('---');
+
+    // Convert human amount to wei
+    const weiAmount = this.convertHumanAmountToWei(humanAmount, fromToken);
+    console.log(`💰 Wei Amount: ${weiAmount}`);
 
     // Initialize SDK for source network
     await this.initializeSDK(fromNetwork);
@@ -273,7 +301,7 @@ class CrossChainSwapper {
       dstChainId: NETWORKS[toNetwork].id,
       srcTokenAddress: srcTokenAddress,
       dstTokenAddress: dstTokenAddress,
-      amount: amount,
+      amount: weiAmount,
       enableEstimate: true,
       walletAddress: this.makerAddress
     };
@@ -402,8 +430,29 @@ class CrossChainSwapper {
 
 // CLI interface
 async function main() {
-  // Handle process.argv safely
-  const args = (typeof process !== 'undefined' && process.argv) ? process.argv.slice(2) : [];
+  // Get arguments from global scope or process.argv
+  let args = [];
+  if (typeof process !== 'undefined' && process.argv) {
+    args = process.argv.slice(2);
+  } else if (typeof global !== 'undefined' && global.process && global.process.argv) {
+    args = global.process.argv.slice(2);
+  } else {
+    // Try to get from require.main
+    try {
+      const mainModule = require.main;
+      if (mainModule && mainModule.argv) {
+        args = mainModule.argv.slice(2);
+      }
+    } catch (e) {
+      console.log('🔍 Debug: Could not get arguments from main module');
+    }
+  }
+  
+  // Debug logging
+  console.log('🔍 Debug: process =', typeof process);
+  console.log('🔍 Debug: global.process =', typeof global !== 'undefined' ? typeof global.process : 'undefined');
+  console.log('🔍 Debug: args =', args);
+  console.log('🔍 Debug: args.length =', args.length);
   
   if (args.length === 0) {
     console.log(`
