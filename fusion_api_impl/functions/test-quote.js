@@ -1,20 +1,20 @@
-const { CrossChainSwapper } = require('./functions/Swapper.js');
+const { CrossChainSwapper } = require('./Swapper.js');
 
-async function testUSDC() {
+async function testQuote() {
   const swapper = new CrossChainSwapper();
   
   try {
     console.log('🔧 Initializing SDK for Arbitrum...');
     await swapper.initializeSDK('arbitrum');
     
-    console.log('🔍 Getting quote for USDC swap...');
+    console.log('🔍 Getting quote for ETH swap...');
     
     const params = {
       srcChainId: 42161, // Arbitrum
       dstChainId: 8453,  // Base
-      srcTokenAddress: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC on Arbitrum
-      dstTokenAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
-      amount: '100000', // 1 USDC
+      srcTokenAddress: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // WETH on Arbitrum (for ETH swap)
+      dstTokenAddress: '0x4200000000000000000000000000000000000006', // WETH on Base (for ETH swap)
+      amount: '100000000000000', // 0.0001 ETH (smaller amount)
       enableEstimate: true,
       walletAddress: '0x6DBC17c7e398807dba3a7E0f80Ea686dEED35Eba'
     };
@@ -63,4 +63,4 @@ async function testUSDC() {
   }
 }
 
-testUSDC(); 
+testQuote(); 

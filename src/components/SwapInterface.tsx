@@ -21,6 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useAccount, useChainId, useSwitchChain } from 'wagmi';
+import WalletConnector from "./WalletConnector";
 
 const chains = [
   { id: 1, name: "Ethereum", symbol: "ETH", logo: "⟠" },
@@ -45,12 +47,32 @@ const SwapInterface = () => {
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [showWalletModal, setShowWalletModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [txHash, setTxHash] = useState("");
   const [quoteLoading, setQuoteLoading] = useState(false);
   const { toast } = useToast();
+  
+  // Rainbow Kit hooks
+  const { isConnected, address } = useAccount();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
+
+  // Sync selected chain with connected wallet
+  useEffect(() => {
+    if (chainId && isConnected) {
+      setFromChain(chainId.toString());
+    }
+  }, [chainId, isConnected]);
+
+  // Handle wallet connection status changes
+  useEffect(() => {
+    if (isConnected && address) {
+      toast({
+        title: "Wallet Connected",
+        description: `Connected to ${address.slice(0, 6)}...${address.slice(-4)}`,
+      });
+    }
+  }, [isConnected, address, toast]);
 
   // Mock swap history
   const [swapHistory] = useState([
@@ -123,13 +145,10 @@ const SwapInterface = () => {
     setToToken(tempToken);
   };
 
-  const connectWallet = (walletType: string) => {
-    setIsConnected(true);
-    setShowWalletModal(false);
-    toast({
-      title: "Wallet Connected",
-      description: `Successfully connected to ${walletType}`,
-    });
+  const handleChainSwitch = (newChainId: string) => {
+    if (switchChain) {
+      switchChain({ chainId: parseInt(newChainId) });
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -190,14 +209,7 @@ const SwapInterface = () => {
             </div>
           </div>
           
-          <Button
-            variant={isConnected ? "outline" : "default"}
-            onClick={() => setShowWalletModal(true)}
-            className={isConnected ? "border-primary/50 hover:border-primary" : "bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow"}
-          >
-            <Wallet className="mr-2 h-4 w-4" />
-            {isConnected ? "0x1234...5678" : "Connect Wallet"}
-          </Button>
+          <WalletConnector />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -222,7 +234,10 @@ const SwapInterface = () => {
                 <div className="space-y-4">
                   <Label className="text-sm font-medium">From</Label>
                   <div className="grid grid-cols-2 gap-4">
-                    <Select value={fromChain} onValueChange={setFromChain}>
+                    <Select value={fromChain} onValueChange={(value) => {
+                      setFromChain(value);
+                      handleChainSwitch(value);
+                    }}>
                       <SelectTrigger className="bg-background/50 border-border/50 hover:border-primary/50 transition-colors">
                         <SelectValue />
                       </SelectTrigger>
@@ -400,32 +415,7 @@ const SwapInterface = () => {
         </div>
       </div>
 
-      {/* Wallet Connection Modal */}
-      <Dialog open={showWalletModal} onOpenChange={setShowWalletModal}>
-        <DialogContent className="bg-gradient-card backdrop-blur-sm border-border/50 max-w-md">
-          <DialogHeader>
-            <DialogTitle>Connect Wallet</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            {[
-              { name: "MetaMask", icon: "🦊" },
-              { name: "Keplr", icon: "⚛️" },
-              { name: "Leap", icon: "🦘" },
-              { name: "WalletConnect", icon: "🔗" },
-            ].map((wallet) => (
-              <Button
-                key={wallet.name}
-                variant="outline"
-                onClick={() => connectWallet(wallet.name)}
-                className="h-14 border-border/50 hover:border-primary/50 hover:bg-primary/20 transition-all duration-300"
-              >
-                <span className="text-2xl mr-3">{wallet.icon}</span>
-                <span className="text-lg">{wallet.name}</span>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+
 
       {/* Transaction Confirmation Modal */}
       <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
