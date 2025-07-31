@@ -546,6 +546,9 @@ app.post('/api/execute-swap', async (req, res) => {
 // Execute direct cross-chain swap with user's signed data (TRUE DeFi)
 app.post('/api/execute-swap-direct', async (req, res) => {
   try {
+    // The client sends the entire userSignedOrderData object as the body
+    const userSignedOrderData = req.body;
+    
     const { 
       fromChainId, 
       toChainId, 
@@ -554,9 +557,10 @@ app.post('/api/execute-swap-direct', async (req, res) => {
       amount, 
       userAddress,
       approvalTx,
-      userSignedOrderData, // User signs order in their wallet
+      orderSignature, // Real signature from MetaMask
+      quote,
       timestamp 
-    } = req.body;
+    } = userSignedOrderData;
     
     if (!fromChainId || !toChainId || !fromToken || !toToken || !amount || !userAddress) {
       return res.status(400).json({
@@ -571,8 +575,16 @@ app.post('/api/execute-swap-direct', async (req, res) => {
     console.log(`👤 User Wallet: ${userAddress}`);
     console.log(`💰 Amount: ${amount}`);
     console.log(`🔐 User signed everything in their wallet`);
-    if (approvalTx) {
-      console.log(`✅ User Approval TX: ${approvalTx}`);
+    console.log(`✅ Has approval TX: ${!!approvalTx}`);
+    console.log(`✅ Has order signature: ${!!orderSignature}`);
+    
+    if (!orderSignature) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing user order signature',
+        details: 'TRUE DeFi requires user to sign order in MetaMask',
+        requiresUserAction: 'SIGN_ORDER_IN_METAMASK'
+      });
     }
 
     // Execute TRUE DeFi swap using ONLY DEV_PORTAL_KEY
@@ -592,26 +604,25 @@ app.post('/api/execute-swap-direct', async (req, res) => {
       // Create TRUE DeFi swapper - no private keys on server
       const trueDeFiSwapper = new CrossChainSwapper();
       
-      console.log(`📋 Processing user's signed order data...`);
+      // Process user's signed order data - REAL TRUE DeFi ONLY
+      if (!userSignedOrderData) {
+        return res.status(400).json({
+          success: false,
+          error: 'Missing user signed order data',
+          details: 'TRUE DeFi requires user to sign order in MetaMask first',
+          requiresUserAction: 'SIGN_ORDER_IN_METAMASK'
+        });
+      }
+
+      console.log(`📋 Processing REAL user signed order data...`);
+      console.log(`🔐 User signed order:`, userSignedOrderData.orderSignature ? 'YES' : 'NO');
+      console.log(`✅ User approved tokens:`, userSignedOrderData.approvalTx ? 'YES' : 'NO');
       
-      // Process user's signed order data
-      let result;
-      if (userSignedOrderData) {
-        // User provided signed order data - submit it
-        result = await trueDeFiSwapper.processUserSignedOrder(userSignedOrderData);
-      } else {
-        // For now, return success indicating user needs to sign in wallet
-        // In real implementation, this would involve the user signing the order in MetaMask
-        console.log(`📝 User needs to sign order in their wallet...`);
-        
-        // Generate a mock transaction hash for now
-        const mockTxHash = '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
-        
-        result = {
-          orderHash: mockTxHash,
-          status: 'pending_user_signature',
-          message: 'User needs to sign order in their wallet'
-        };
+      // Submit REAL signed order to 1inch
+      const result = await trueDeFiSwapper.processUserSignedOrder(userSignedOrderData);
+      
+      if (!result || !result.orderHash) {
+        throw new Error('Failed to process real signed order - no valid response from 1inch');
       }
 
       console.log(`✅ TRUE DeFi swap processed!`);
