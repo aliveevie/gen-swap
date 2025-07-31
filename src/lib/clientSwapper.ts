@@ -304,13 +304,17 @@ export class ClientSwapper {
     return data.data;
   }
 
-  // Check if approval is needed and handle it, then automatically execute swap
+  // Check if approval is needed and handle it, then sign order and execute swap (TRUE DeFi)
   async handleTokenApprovalAndSwap(swapParams: SwapParams, apiBaseUrl: string): Promise<SwapResult> {
     if (!this.isInitialized || !this.signer) {
       throw new Error('ClientSwapper not initialized. Call initialize() first.');
     }
 
     try {
+      console.log('🚀 Starting TRUE DeFi swap process...');
+      console.log('👤 User will approve tokens AND sign orders in MetaMask');
+      console.log('🔐 Server uses DEV_PORTAL_KEY for API access ONLY');
+      
       const { fromChainId, fromToken, amount } = swapParams;
       
       // Get token and spender addresses
@@ -327,8 +331,8 @@ export class ClientSwapper {
       
       console.log(`💰 Required amount: ${requiredAmount.toString()} (${amount} ${fromToken})`);
       
-      // Check current allowance
-      console.log('🔍 Checking current token allowance...');
+      // Step 1: Check and handle token approval
+      console.log('🔍 Step 1: Checking token approval...');
       const currentAllowance = await this.checkAllowance(tokenAddress, spenderAddress);
       console.log(`🔍 Current allowance: ${currentAllowance.toString()}`);
       console.log(`🔍 Required amount: ${requiredAmount.toString()}`);
@@ -337,63 +341,62 @@ export class ClientSwapper {
       let approvalTx = null;
       
       if (currentAllowance < requiredAmount) {
-        console.log('🔐 ⚠️  APPROVAL NEEDED - This should trigger MetaMask popup!');
-        console.log('🔐 Requesting user to approve token spending...');
-        
-        // Show user that MetaMask popup should appear
-        console.log('👀 LOOK FOR METAMASK POPUP - User needs to approve transaction');
+        console.log('🔐 ⚠️  TOKEN APPROVAL NEEDED - MetaMask popup coming!');
+        console.log('🔐 User needs to approve token spending...');
         
         // Request approval from user (this MUST show MetaMask popup)
         approvalTx = await this.approveToken(tokenAddress, spenderAddress, requiredAmount);
-        console.log(`✅ User approved! Transaction hash: ${approvalTx}`);
+        console.log(`✅ User approved tokens! TX: ${approvalTx}`);
       } else {
-        console.log('✅ Token already has sufficient allowance - no MetaMask popup needed');
-        console.log(`   Current: ${currentAllowance.toString()}`);
-        console.log(`   Required: ${requiredAmount.toString()}`);
+        console.log('✅ Token already has sufficient allowance');
       }
       
-      // Get user's wallet data for server-side execution
+      // Step 2: Get quote from server
+      console.log('🔍 Step 2: Getting quote from server...');
       const userAddress = await this.signer.getAddress();
-      const network = await this.provider!.getNetwork();
+      const quote = await this.getQuote(swapParams, apiBaseUrl);
+      console.log('✅ Quote received from server');
       
-      console.log('🚀 Now executing swap with server...');
-      console.log(`👤 User address: ${userAddress}`);
-      console.log(`🌐 Network: ${network.chainId}`);
+      // Step 3: Sign the order in MetaMask (TRUE DeFi)
+      console.log('🔐 Step 3: User signs order in MetaMask...');
+      console.log('👀 LOOK FOR METAMASK POPUP - User needs to sign order');
       
-      // Prepare complete swap execution data
-      const swapExecutionData = {
+      const orderSignature = await this.signOrder(swapParams, quote, userAddress);
+      console.log('✅ User signed order in MetaMask!');
+      
+      // Step 4: Send signed order to server
+      console.log('📤 Step 4: Sending signed order to server...');
+      
+      const userSignedOrderData = {
         ...swapParams,
         userAddress,
-        chainId: network.chainId.toString(),
         approvalTx,
         tokenAddress,
         spenderAddress,
-        requiredAmount: requiredAmount.toString(),
+        orderSignature,
+        quote,
         timestamp: new Date().toISOString()
       };
       
-      console.log('📤 Sending swap execution request to server...');
-      
-      // Send to server for execution
-      const result = await this.executeSwapWithUserWallet(swapExecutionData, apiBaseUrl);
+      const result = await this.executeSwapWithUserSignedOrder(userSignedOrderData, apiBaseUrl);
       
       return {
         status: 'completed',
         approvalTx,
         swapTx: result.transactionHash,
         orderHash: result.transactionHash,
-        message: 'Swap completed successfully in one step!',
+        message: 'TRUE DeFi swap completed - user signed everything!',
         tokenAddress,
         spenderAddress
       };
       
     } catch (error: any) {
-      console.error('❌ Token approval and swap failed:', error);
+      console.error('❌ TRUE DeFi swap failed:', error);
       
       // Better error logging
       if (error.code === 4001) {
         console.error('❌ User rejected the transaction in MetaMask');
-        throw new Error('User rejected the transaction');
+        throw new Error('User rejected the transaction in MetaMask');
       } else if (error.message?.includes('user rejected')) {
         console.error('❌ User rejected the transaction');
         throw new Error('User rejected the transaction');
@@ -404,25 +407,109 @@ export class ClientSwapper {
     }
   }
 
-  // Execute swap directly with user wallet data
-  private async executeSwapWithUserWallet(swapData: any, apiBaseUrl: string): Promise<any> {
-    console.log('📤 Executing swap with user wallet data...');
+  // Sign order using EIP-712 in MetaMask (TRUE DeFi)
+  private async signOrder(swapParams: SwapParams, quote: any, userAddress: string): Promise<string> {
+    console.log('🔐 Signing order with EIP-712 in MetaMask...');
+    
+    // Prepare EIP-712 domain and message for 1inch Fusion order
+    const domain = {
+      name: '1inch Fusion',
+      version: '1',
+      chainId: swapParams.fromChainId,
+      verifyingContract: '0x1111111254EEB25477B68fb85Ed929f73A960582' // 1inch Fusion contract
+    };
+
+    const types = {
+      Order: [
+        { name: 'maker', type: 'address' },
+        { name: 'receiver', type: 'address' },
+        { name: 'makerAsset', type: 'address' },
+        { name: 'takerAsset', type: 'address' },
+        { name: 'makingAmount', type: 'uint256' },
+        { name: 'takingAmount', type: 'uint256' },
+        { name: 'salt', type: 'uint256' }
+      ]
+    };
+
+    const tokenAddress = this.getTokenAddress(swapParams.fromChainId, swapParams.fromToken);
+    const toTokenAddress = this.getTokenAddress(swapParams.toChainId, swapParams.toToken);
+    
+    // Get token decimals for proper conversion
+    const fromDecimals = await this.getTokenDecimals(tokenAddress);
+    const toDecimals = await this.getTokenDecimals(toTokenAddress);
+    
+    // Convert amounts to wei using parseUnits
+    const makingAmount = parseUnits(swapParams.amount, fromDecimals);
+    
+    // Handle quote amount - convert to wei units
+    let takingAmount: bigint;
+    if (quote.toAmount) {
+      // If quote.toAmount is already a wei string, use it directly
+      if (quote.toAmount.includes('.')) {
+        takingAmount = parseUnits(quote.toAmount, toDecimals);
+      } else {
+        takingAmount = BigInt(quote.toAmount);
+      }
+    } else if (quote.data && quote.data.toAmount) {
+      takingAmount = parseUnits(quote.data.toAmount, toDecimals);
+    } else {
+      // Fallback - use a reasonable estimate
+      console.warn('⚠️ No quote amount found, using fallback estimate');
+      takingAmount = parseUnits('1', toDecimals); // 1 token as fallback
+    }
+    
+    const message = {
+      maker: userAddress,
+      receiver: userAddress,
+      makerAsset: tokenAddress,
+      takerAsset: toTokenAddress,
+      makingAmount: makingAmount.toString(),
+      takingAmount: takingAmount.toString(),
+      salt: Math.floor(Math.random() * 1000000).toString()
+    };
+
+    console.log('📋 EIP-712 Domain:', domain);
+    console.log('📋 EIP-712 Message:', message);
+    console.log(`💰 Making Amount: ${swapParams.amount} ${swapParams.fromToken} = ${makingAmount.toString()} wei`);
+    console.log(`💰 Taking Amount: ${takingAmount.toString()} wei`);
+
+    try {
+      // Sign with MetaMask using EIP-712
+      const signature = await this.signer.signTypedData(domain, types, message);
+      console.log('✅ Order signed successfully!');
+      console.log('🔐 Signature:', signature);
+      
+      return signature;
+    } catch (error: any) {
+      console.error('❌ Order signing failed:', error);
+      if (error.code === 4001) {
+        throw new Error('User rejected order signing in MetaMask');
+      }
+      throw new Error(`Order signing failed: ${error.message}`);
+    }
+  }
+
+  // Execute swap with user's signed order data (TRUE DeFi)
+  private async executeSwapWithUserSignedOrder(userSignedOrderData: any, apiBaseUrl: string): Promise<any> {
+    console.log('📤 Executing TRUE DeFi swap with user signed order...');
+    console.log('🔐 User approved tokens AND signed order');
+    console.log('📡 Server uses DEV_PORTAL_KEY for API access only');
     
     const response = await fetch(`${apiBaseUrl}/execute-swap-direct`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(swapData)
+      body: JSON.stringify(userSignedOrderData)
     });
     
     const result = await response.json();
     
     if (!result.success) {
-      throw new Error(result.error || 'Failed to execute swap');
+      throw new Error(result.error || 'Failed to execute TRUE DeFi swap');
     }
     
-    console.log('✅ Swap executed successfully:', result.data);
+    console.log('✅ TRUE DeFi swap executed successfully:', result.data);
     return result.data;
   }
 

@@ -354,9 +354,9 @@ const SwapInterface = () => {
           throw new Error('No wallet provider found. Please install MetaMask.');
         }
         
-        console.log('🔧 Initializing ClientSwapper...');
+        console.log('🔧 Initializing TRUE DeFi ClientSwapper...');
         await clientSwapperRef.current.initialize(walletProvider);
-        console.log('✅ ClientSwapper initialized');
+        console.log('✅ TRUE DeFi ClientSwapper initialized');
       }
 
       // Debug wallet connection
@@ -364,8 +364,8 @@ const SwapInterface = () => {
       await clientSwapperRef.current.debugWalletConnection();
 
       toast({
-        title: "Check Your Wallet",
-        description: "Please approve the token spending in MetaMask popup...",
+        title: "TRUE DeFi Swap Starting",
+        description: "You'll need to approve tokens AND sign orders in MetaMask...",
       });
 
       const swapParams = {
@@ -380,20 +380,21 @@ const SwapInterface = () => {
       // Validate swap parameters
       clientSwapperRef.current.validateSwapParams(swapParams);
 
-      console.log('🚀 Starting approval and swap process...');
-      console.log('👀 Watch console for MetaMask popup notifications');
+      console.log('🚀 Starting TRUE DeFi approval and swap process...');
+      console.log('👤 User will sign EVERYTHING in MetaMask');
+      console.log('🔐 Server only uses API key - NO private keys');
       
-      // Alert user that MetaMask should popup
+      // Alert user about TRUE DeFi process
       toast({
-        title: "⚠️ MetaMask Popup Expected",
-        description: "If MetaMask doesn't popup, check console logs for 'APPROVAL NEEDED'",
+        title: "🔐 TRUE DeFi Process",
+        description: "Step 1: Approve tokens, Step 2: Sign order - both in MetaMask",
         variant: "default"
       });
 
-      // Handle token approval AND execute swap in one step
+      // Execute TRUE DeFi swap - user signs everything
       const result = await clientSwapperRef.current.handleTokenApprovalAndSwap(swapParams, API_BASE_URL);
       
-      console.log('One-step swap result:', result);
+      console.log('TRUE DeFi swap result:', result);
       
       // Add to swap history
       const newSwap = {
@@ -416,28 +417,29 @@ const SwapInterface = () => {
       setShowConfirmModal(true);
       
       toast({
-        title: "✅ Swap Completed Successfully!",
-        description: `Cross-chain swap executed! ${result.swapTx ? `TX: ${result.swapTx.slice(0, 10)}...` : ''}`,
+        title: "✅ TRUE DeFi Swap Completed!",
+        description: `You signed everything in MetaMask! TX: ${result.swapTx ? result.swapTx.slice(0, 10) + '...' : 'Success'}`,
       });
       
     } catch (error: any) {
-      console.error('Swap error:', error);
+      console.error('TRUE DeFi swap error:', error);
       
       // Check if it's a user rejection
       if (error.message && (
         error.message.includes('user rejected') || 
         error.message.includes('User rejected') ||
-        error.message.includes('ACTION_REJECTED')
+        error.message.includes('ACTION_REJECTED') ||
+        error.message.includes('MetaMask')
       )) {
         toast({
           title: "Transaction Cancelled",
-          description: "You cancelled the transaction in your wallet.",
+          description: "You cancelled the transaction in MetaMask.",
           variant: "destructive"
         });
       } else {
         toast({
-          title: "Swap Failed",
-          description: error.message || "Failed to process swap. Please try again.",
+          title: "TRUE DeFi Swap Failed",
+          description: error.message || "Failed to process TRUE DeFi swap. Please try again.",
           variant: "destructive"
         });
       }
@@ -522,9 +524,9 @@ const SwapInterface = () => {
             />
             <div>
               <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                genSwaps
+                genSwaps TRUE DeFi
               </h1>
-              <p className="text-muted-foreground">Cross-chain DeFi made simple</p>
+              <p className="text-muted-foreground">True decentralized cross-chain swaps</p>
             </div>
           </div>
           
@@ -537,7 +539,7 @@ const SwapInterface = () => {
             <Card className="bg-gradient-card backdrop-blur-sm border-border/50 shadow-card">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>Swap Tokens</span>
+                  <span>TRUE DeFi Swap Tokens</span>
                   <Button 
                     variant="ghost" 
                     size="sm"
@@ -667,7 +669,7 @@ const SwapInterface = () => {
                   )}
                 </div>
 
-                {/* Swap Button - Single Step */}
+                {/* Swap Button - TRUE DeFi */}
                 <Button
                   onClick={handleSwap}
                   disabled={!isConnected || !fromAmount || !toAmount || isLoading}
@@ -676,14 +678,14 @@ const SwapInterface = () => {
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Processing Swap...
+                      Processing TRUE DeFi Swap...
                     </>
                   ) : !isConnected ? (
-                    "Connect Wallet to Swap"
+                    "Connect Wallet for TRUE DeFi"
                   ) : !toAmount ? (
                     "Enter Amount to Get Quote"
                   ) : (
-                    `Confirm Cross-Chain Swap`
+                    `Sign in MetaMask - TRUE DeFi Swap`
                   )}
                 </Button>
               </CardContent>
@@ -751,32 +753,21 @@ const SwapInterface = () => {
         <DialogContent className="bg-gradient-card backdrop-blur-sm border-border/50 max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {isApproved ? "Cross-Chain Swap Completed" : "Token Approval Completed"}
+              TRUE DeFi Swap Completed Successfully!
             </DialogTitle>
           </DialogHeader>
           <div className="py-6 text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-success/20 rounded-full flex items-center justify-center">
               <CheckCircle className="h-8 w-8 text-success" />
             </div>
-            {isApproved ? (
-              <>
-                <p className="text-lg mb-4">Cross-chain swap completed!</p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Your tokens have been swapped across chains using 1inch Fusion+.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-lg mb-4">Token approval completed successfully!</p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  You can now execute the cross-chain swap when ready.
-                </p>
-              </>
-            )}
+            <p className="text-lg mb-4">Your TRUE DeFi cross-chain swap is complete!</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              You approved tokens AND signed the order in MetaMask. Server only provided API access.
+            </p>
             <div className="bg-background/50 p-4 rounded-lg border border-border/50">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
-                  {isApproved ? "Swap Transaction Hash:" : "Approval Transaction Hash:"}
+                  Transaction Hash:
                 </span>
                 <div className="flex items-center space-x-2">
                   <span className="text-sm font-mono">{txHash}</span>

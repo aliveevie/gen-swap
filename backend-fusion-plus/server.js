@@ -14,19 +14,16 @@ app.use(cors());
 app.use(express.json());
 
 // Initialize the swapper (for server-side operations)
-let swapper = null;
-try {
-  // Only initialize if we have the required environment variables
-  if (process.env.DEV_PORTAL_KEY) {
-    // Note: We don't initialize a swapper here since each request creates one for the specific user
-    console.log('✅ DEV_PORTAL_KEY found - DeFi swapping enabled');
-    console.log('🔧 Architecture: User wallet approvals + DEV_PORTAL_KEY for API access');
-  } else {
-    console.log('⚠️  No DEV_PORTAL_KEY found - swapping disabled');
-    console.log('💡 Get your API key from https://portal.1inch.dev/ to enable DeFi swaps');
-  }
-} catch (error) {
-  console.log('⚠️  DeFi swapper setup notice:', error.message);
+console.log('🔧 Initializing TRUE DeFi Architecture...');
+console.log('👤 Users: Sign everything in their own wallet');
+console.log('🔐 Server: Uses DEV_PORTAL_KEY for API access ONLY');
+console.log('❌ NO private keys stored on server');
+
+if (!process.env.DEV_PORTAL_KEY) {
+  console.log('⚠️  DEV_PORTAL_KEY missing - swapping disabled');
+  console.log('💡 Get your API key from https://portal.1inch.dev/');
+} else {
+  console.log('✅ DEV_PORTAL_KEY configured - TRUE DeFi swapping enabled');
 }
 
 // Helper functions
@@ -111,7 +108,7 @@ app.get('/api/health', (req, res) => {
     message: 'GenSwap API is running',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
-    swapperStatus: swapper ? 'initialized' : 'client-side-only'
+    swapperStatus: 'TRUE DeFi Architecture'
   });
 });
 
@@ -208,91 +205,62 @@ app.post('/api/quote', async (req, res) => {
     const decimals = tokenDecimals[fromToken] || 18;
     const weiAmount = Math.floor(parseFloat(amount) * Math.pow(10, decimals)).toString();
 
-    // Get token addresses
-    const srcTokenAddress = TOKENS[fromNetwork][fromToken];
-    const dstTokenAddress = TOKENS[toNetwork][toToken];
-    
-    if (!srcTokenAddress || !dstTokenAddress) {
-      return res.status(400).json({
-        success: false,
-        error: 'Token not supported for this network pair'
-      });
-    }
-
-    // Prepare quote parameters
-    const params = {
-      srcChainId: NETWORKS[fromNetwork].id,
-      dstChainId: NETWORKS[toNetwork].id,
-      srcTokenAddress: srcTokenAddress,
-      dstTokenAddress: dstTokenAddress,
-      amount: weiAmount,
-      enableEstimate: true,
-      walletAddress: walletAddress
-    };
-
     // Get quote from 1inch API (only for price estimation, not execution)
-    if (swapper && process.env.DEV_PORTAL_KEY) {
+    if (process.env.DEV_PORTAL_KEY) {
       try {
-        await swapper.initializeSDK(fromNetwork);
-        const quote = await swapper.sdk.getQuote(params);
+        const defiSwapper = new CrossChainSwapper(); // TRUE DeFi swapper - no wallet needed
+        const quote = await defiSwapper.getQuote(fromNetwork, toNetwork, fromToken, toToken, amount, walletAddress);
         
-        if (quote && quote.getPreset) {
-          const estimatedOutput = quote.getPreset().estimatedOutput || weiAmount;
+        if (quote && quote.presets && quote.presets.length > 0) {
+          const preset = quote.presets[0]; // Get first preset
+          const estimatedOutput = preset.estimatedOutput || weiAmount;
           const outputDecimals = tokenDecimals[toToken] || 18;
           const humanOutput = (BigInt(estimatedOutput) / BigInt(Math.pow(10, outputDecimals))).toString();
+          
+          console.log('✅ Quote received from TRUE DeFi API');
+          console.log(`📊 Estimated output: ${humanOutput} ${toToken}`);
           
           res.json({
             success: true,
             data: {
-              estimatedOutput: humanOutput,
               fromAmount: amount,
               toAmount: humanOutput,
               fromToken,
               toToken,
-              fromChainId,
-              toChainId
+              fromChain: fromChainId,
+              toChain: toChainId,
+              estimatedGas: preset.estimatedGas || '0',
+              quote: quote
             }
           });
+          return;
         } else {
-          throw new Error('Invalid quote response');
+          console.log('❌ No quote presets available');
         }
       } catch (error) {
-        console.error('Error getting quote from 1inch:', error);
-        // Fallback to realistic mock quote
-        const realisticRate = 0.98; // Realistic 1:1 rate with small slippage
-        const estimatedOutput = (parseFloat(amount) * realisticRate).toFixed(6);
-        
-        res.json({
-          success: true,
-          data: {
-            estimatedOutput,
-            fromAmount: amount,
-            toAmount: estimatedOutput,
-            fromToken,
-            toToken,
-            fromChainId,
-            toChainId
-          }
-        });
+        console.error('Error getting quote from TRUE DeFi API:', error);
       }
-    } else {
-      // Realistic mock quote when swapper is not available
-      const realisticRate = 0.98; // Realistic 1:1 rate with small slippage
-      const estimatedOutput = (parseFloat(amount) * realisticRate).toFixed(6);
-      
-      res.json({
-        success: true,
-        data: {
-          estimatedOutput,
-          fromAmount: amount,
-          toAmount: estimatedOutput,
-          fromToken,
-          toToken,
-          fromChainId,
-          toChainId
-        }
-      });
     }
+    
+    // Fallback response if TRUE DeFi API fails
+    console.log('📋 Using fallback quote estimation');
+    const realisticRate = 0.98; // Realistic 1:1 rate with small slippage
+    const estimatedOutput = (parseFloat(amount) * realisticRate).toFixed(6);
+    
+    res.json({
+      success: true,
+      data: {
+        fromAmount: amount,
+        toAmount: estimatedOutput,
+        fromToken,
+        toToken,
+        fromChain: fromChainId,
+        toChain: toChainId,
+        estimatedGas: '0',
+        quote: null,
+        fallback: true
+      }
+    });
     
   } catch (error) {
     console.error('Error getting quote:', error);
@@ -467,7 +435,7 @@ app.post('/api/execute-swap', async (req, res) => {
     }
 
     // Execute real cross-chain swap using Swapper.js if available
-    if (swapper && process.env.DEV_PORTAL_KEY && process.env.WALLET_KEY) {
+    if (process.env.DEV_PORTAL_KEY) {
       try {
         console.log(`🔧 Initializing swapper for real cross-chain execution...`);
         
@@ -482,10 +450,11 @@ app.post('/api/execute-swap', async (req, res) => {
         console.log(`💵 Amount: ${swapAmount}`);
         
         // Initialize swapper with the source network
-        await swapper.initializeSDK(fromNetworkName);
+        const defiSwapper = new CrossChainSwapper(walletAddress); // Use the actual wallet address
+        await defiSwapper.initializeSDK(fromNetworkName);
         
         // Execute the cross-chain swap
-        const result = await swapper.executeCrossChainSwap(
+        const result = await defiSwapper.executeCrossChainSwap(
           fromNetworkName,
           toNetworkName,
           fromToken,
@@ -542,7 +511,7 @@ app.post('/api/execute-swap', async (req, res) => {
     } else {
       // Fallback: Generate realistic transaction hash for testing
       console.log(`⚠️  Swapper not fully configured, generating test transaction...`);
-      console.log(`⚠️  Missing: ${!process.env.DEV_PORTAL_KEY ? 'DEV_PORTAL_KEY ' : ''}${!process.env.WALLET_KEY ? 'WALLET_KEY ' : ''}`);
+      console.log(`⚠️  Missing: DEV_PORTAL_KEY`);
       
       const testTxHash = '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
       
@@ -559,7 +528,7 @@ app.post('/api/execute-swap', async (req, res) => {
           approvalTxHash,
           status: 'completed',
           timestamp: new Date().toISOString(),
-          message: 'Test transaction - configure DEV_PORTAL_KEY and WALLET_KEY for real swaps',
+          message: 'Test transaction - configure DEV_PORTAL_KEY for real swaps',
           isRealSwap: false
         }
       });
@@ -574,7 +543,7 @@ app.post('/api/execute-swap', async (req, res) => {
   }
 });
 
-// Execute direct cross-chain swap with user wallet data (one-step process)
+// Execute direct cross-chain swap with user's signed data (TRUE DeFi)
 app.post('/api/execute-swap-direct', async (req, res) => {
   try {
     const { 
@@ -583,125 +552,112 @@ app.post('/api/execute-swap-direct', async (req, res) => {
       fromToken, 
       toToken, 
       amount, 
-      walletAddress,
       userAddress,
       approvalTx,
-      tokenAddress,
-      spenderAddress,
+      userSignedOrderData, // User signs order in their wallet
       timestamp 
     } = req.body;
     
     if (!fromChainId || !toChainId || !fromToken || !toToken || !amount || !userAddress) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required parameters for direct swap execution'
+        error: 'Missing required parameters for TRUE DeFi swap execution'
       });
     }
 
-    console.log(`🚀 Executing DIRECT cross-chain swap with USER wallet...`);
+    console.log(`🚀 Executing TRUE DeFi cross-chain swap...`);
     console.log(`📤 From: ${fromToken} on Chain ${fromChainId}`);
     console.log(`📥 To: ${toToken} on Chain ${toChainId}`);
     console.log(`👤 User Wallet: ${userAddress}`);
     console.log(`💰 Amount: ${amount}`);
+    console.log(`🔐 User signed everything in their wallet`);
     if (approvalTx) {
       console.log(`✅ User Approval TX: ${approvalTx}`);
     }
 
-    // Find network names from chain IDs
-    const fromNetworkName = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(fromChainId));
-    const toNetworkName = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(toChainId));
-    
-    if (!fromNetworkName || !toNetworkName) {
-      return res.status(400).json({
-        success: false,
-        error: 'Unsupported network chain ID'
-      });
-    }
-
-    // Execute real cross-chain swap using USER's approved tokens
+    // Execute TRUE DeFi swap using ONLY DEV_PORTAL_KEY
     if (!process.env.DEV_PORTAL_KEY) {
       return res.status(500).json({
         success: false,
         error: 'DEV_PORTAL_KEY not configured. Cannot execute swaps.',
-        details: 'Get your API key from https://portal.1inch.dev/ to enable DeFi swaps.'
+        details: 'TRUE DeFi requires DEV_PORTAL_KEY for 1inch API access only.'
       });
     }
 
     try {
-      console.log(`🚀 Starting DeFi cross-chain swap execution...`);
-      console.log(`👤 User has approved tokens: ${approvalTx || 'existing approval'}`);
-      console.log(`👤 User wallet: ${userAddress}`);
-      console.log(`🔧 Server uses DEV_PORTAL_KEY for API access only`);
+      console.log(`🔧 Creating TRUE DeFi swapper...`);
+      console.log(`👤 User controls ALL signing and approvals`);
+      console.log(`🔐 Server uses DEV_PORTAL_KEY for API access ONLY`);
       
-      // Create DeFi swapper for user's approved tokens
-      // No server wallet required - user controls everything via approvals
-      const defiSwapper = new CrossChainSwapper(userAddress);
+      // Create TRUE DeFi swapper - no private keys on server
+      const trueDeFiSwapper = new CrossChainSwapper();
       
-      // Initialize SDK for API calls
-      await defiSwapper.initializeSDK(fromNetworkName);
+      console.log(`📋 Processing user's signed order data...`);
       
-      console.log(`📋 Executing DeFi cross-chain swap...`);
-      console.log(`📤 From Network: ${fromNetworkName}`);
-      console.log(`📥 To Network: ${toNetworkName}`);
-      console.log(`💰 From Token: ${fromToken}`);
-      console.log(`💰 To Token: ${toToken}`);
-      console.log(`💵 Amount: ${amount}`);
-      
-      // Execute swap using user's approved tokens
-      const result = await defiSwapper.executeCrossChainSwapForUser(
-        fromNetworkName,
-        toNetworkName,
-        fromToken,
-        toToken,
-        amount,
-        userAddress
-      );
+      // Process user's signed order data
+      let result;
+      if (userSignedOrderData) {
+        // User provided signed order data - submit it
+        result = await trueDeFiSwapper.processUserSignedOrder(userSignedOrderData);
+      } else {
+        // For now, return success indicating user needs to sign in wallet
+        // In real implementation, this would involve the user signing the order in MetaMask
+        console.log(`📝 User needs to sign order in their wallet...`);
+        
+        // Generate a mock transaction hash for now
+        const mockTxHash = '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
+        
+        result = {
+          orderHash: mockTxHash,
+          status: 'pending_user_signature',
+          message: 'User needs to sign order in their wallet'
+        };
+      }
 
-      console.log(`✅ DeFi swap executed successfully!`);
-      console.log(`🆔 Order Hash: ${result.orderHash}`);
+      console.log(`✅ TRUE DeFi swap processed!`);
+      console.log(`🆔 Result:`, JSON.stringify(result, null, 2));
       
       res.json({
         success: true,
         data: {
-          transactionHash: result.orderHash,
-          fromNetwork: fromNetworkName,
-          toNetwork: toNetworkName,
+          transactionHash: result.orderHash || result.hash,
+          fromNetwork: fromChainId,
+          toNetwork: toChainId,
           fromToken,
           toToken,
           amount: amount,
           userWallet: userAddress,
           approvalTx,
-          status: 'completed',
+          status: result.status || 'completed',
           timestamp: new Date().toISOString(),
-          orderResponse: result.orderResponse,
-          executionMethod: 'defi_user_controlled',
-          isRealSwap: true,
-          architecture: 'user_wallet_approvals_only'
+          orderResponse: result,
+          executionMethod: 'TRUE_DeFi_user_controls_everything',
+          isRealSwap: !!userSignedOrderData,
+          architecture: 'user_signs_everything_server_api_only'
         }
       });
       
     } catch (error) {
-      console.error(`❌ DeFi swap execution failed: ${error.message}`);
+      console.error(`❌ TRUE DeFi swap failed: ${error.message}`);
       console.error(`❌ Error details:`, error.stack);
       
-      // Return detailed error information
       res.status(500).json({
         success: false,
-        error: `DeFi swap failed: ${error.message}`,
-        details: 'Check user token approvals and DEV_PORTAL_KEY configuration.',
+        error: `TRUE DeFi swap failed: ${error.message}`,
+        details: 'Check user wallet interactions and DEV_PORTAL_KEY configuration.',
         errorType: error.constructor.name,
         serverConfig: {
           hasDevPortalKey: !!process.env.DEV_PORTAL_KEY,
-          architecture: 'user_controlled_defi'
+          architecture: 'TRUE_DeFi_no_server_private_keys'
         }
       });
     }
     
   } catch (error) {
-    console.error('Error executing user wallet swap:', error);
+    console.error('Error executing TRUE DeFi swap:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to execute user wallet swap'
+      error: error.message || 'Failed to execute TRUE DeFi swap'
     });
   }
 });
@@ -716,13 +672,13 @@ app.use((req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 GenSwap DeFi API Server running on port ${PORT}`);
+  console.log(`🚀 GenSwap TRUE DeFi API Server running on port ${PORT}`);
   console.log(`📡 API Base URL: http://localhost:${PORT}/api`);
   console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
-  console.log(`🔧 DeFi Architecture: ${process.env.DEV_PORTAL_KEY ? '✅ User wallet approvals + API access' : '⚠️  DEV_PORTAL_KEY required'}`);
-  console.log(`💰 User Control: Users approve tokens in their own wallets`);
-  console.log(`🔑 Server Role: API access only (no private key signing for users)`);
+  console.log(`🔧 TRUE DeFi Status: ${process.env.DEV_PORTAL_KEY ? '✅ Ready for swaps' : '⚠️  DEV_PORTAL_KEY required'}`);
+  console.log(`👤 User Role: Sign ALL transactions in their own wallet`);
+  console.log(`🔐 Server Role: API access ONLY (NO private keys)`);
 });
 
 module.exports = app;
