@@ -1,4 +1,4 @@
-const { CrossChainSwapper } = require('./functions/Swapper.js');
+const { CrossChainSwapper } = require('./Swapper.js');
 
 async function checkOrderStatus(orderHash) {
   const swapper = new CrossChainSwapper();

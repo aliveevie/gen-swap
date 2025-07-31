@@ -7,15 +7,25 @@
     "test-setup": "node cli.js test-setup",
     "check": "node cli.js check",
     "swap": "node cli.js swap",
-    "help": "node cli.js"
+    "help": "node cli.js",
+    "start": "node server.js",
+    "dev": "node server.js"
   },
-  "keywords": ["1inch", "fusion", "cross-chain", "swap", "defi"],
+  "keywords": [
+    "1inch",
+    "fusion",
+    "cross-chain",
+    "swap",
+    "defi"
+  ],
   "author": "GenSwap Team",
   "license": "ISC",
   "dependencies": {
     "@1inch/cross-chain-sdk": "latest",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.3",
+    "express": "^5.1.0",
     "web3": "^4.13.0"
   }
 }

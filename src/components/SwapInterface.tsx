@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAccount, useChainId, useSwitchChain } from 'wagmi';
 import WalletConnector from "./WalletConnector";
+import { ClientSwapper } from "@/lib/clientSwapper";
 
-const chains = [
+// API base URL
+const API_BASE_URL = 'http://localhost:9056/api';
+
+// Default chains and tokens - will be populated from API
+const defaultChains = [
   { id: 1, name: "Ethereum", symbol: "ETH", logo: "⟠" },
   { id: 56, name: "BSC", symbol: "BNB", logo: "🟡" },
   { id: 137, name: "Polygon", symbol: "MATIC", logo: "🟣" },
@@ -32,7 +37,7 @@ const chains = [
   { id: 250, name: "Fantom", symbol: "FTM", logo: "👻" },
 ];
 
-const tokens = [
+const defaultTokens = [
   { symbol: "ETH", name: "Ethereum", logo: "⟠" },
   { symbol: "USDC", name: "USD Coin", logo: "💰" },
   { symbol: "USDT", name: "Tether", logo: "💵" },
@@ -50,7 +55,14 @@ const SwapInterface = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [txHash, setTxHash] = useState("");
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [chains, setChains] = useState(defaultChains);
+  const [fromTokens, setFromTokens] = useState(defaultTokens);
+  const [toTokens, setToTokens] = useState(defaultTokens);
+  const [swapHistory, setSwapHistory] = useState([]);
   const { toast } = useToast();
+  
+  // Client swapper instance
+  const clientSwapperRef = useRef<ClientSwapper | null>(null);
   
   // Rainbow Kit hooks
   const { isConnected, address } = useAccount();
@@ -74,66 +86,188 @@ const SwapInterface = () => {
     }
   }, [isConnected, address, toast]);
 
-  // Mock swap history
-  const [swapHistory] = useState([
-    {
-      id: 1,
-      fromChain: "Ethereum",
-      toChain: "Polygon",
-      fromToken: "ETH",
-      toToken: "USDC",
-      amount: "0.5",
-      value: "$1,250",
-      status: "completed",
-      txHash: "0x1234...5678",
-      timestamp: "2 hours ago"
-    },
-    {
-      id: 2,
-      fromChain: "BSC",
-      toChain: "Avalanche",
-      fromToken: "BNB",
-      toToken: "AVAX",
-      amount: "2.5",
-      value: "$850",
-      status: "pending",
-      txHash: "0x9876...4321",
-      timestamp: "5 minutes ago"
-    },
-    {
-      id: 3,
-      fromChain: "Polygon",
-      toChain: "Ethereum",
-      fromToken: "MATIC",
-      toToken: "WBTC",
-      amount: "1000",
-      value: "$2,100",
-      status: "failed",
-      txHash: "0xabcd...efgh",
-      timestamp: "1 day ago"
+  // Load networks and tokens from API
+  useEffect(() => {
+    const loadNetworks = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/networks`);
+        const data = await response.json();
+        if (data.success) {
+          setChains(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to load networks:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load supported networks",
+          variant: "destructive"
+        });
+      }
+    };
+
+    loadNetworks();
+  }, [toast]);
+
+  // Load tokens for selected chains
+  useEffect(() => {
+    const loadTokens = async () => {
+      try {
+        const fromNetwork = chains.find(chain => chain.id.toString() === fromChain);
+        const toNetwork = chains.find(chain => chain.id.toString() === toChain);
+        
+        if (fromNetwork) {
+          const response = await fetch(`${API_BASE_URL}/tokens/${fromNetwork.networkName}`);
+          const data = await response.json();
+          if (data.success) {
+            setFromTokens(data.data);
+          }
+        }
+        
+        if (toNetwork) {
+          const response = await fetch(`${API_BASE_URL}/tokens/${toNetwork.networkName}`);
+          const data = await response.json();
+          if (data.success) {
+            setToTokens(data.data);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load tokens:', error);
+      }
+    };
+
+    if (chains.length > 0) {
+      loadTokens();
     }
-  ]);
+  }, [fromChain, toChain, chains]);
 
   useEffect(() => {
-    if (fromAmount && fromToken && toToken) {
+    if (fromAmount && fromToken && toToken && isConnected && address) {
       setQuoteLoading(true);
-      // Simulate API call
-      setTimeout(() => {
-        const mockRate = Math.random() * 2000 + 1000;
-        setToAmount((parseFloat(fromAmount) * mockRate).toFixed(6));
-        setQuoteLoading(false);
-      }, 1000);
+      
+      const getQuote = async () => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/quote`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fromChainId: parseInt(fromChain),
+              toChainId: parseInt(toChain),
+              fromToken,
+              toToken,
+              amount: fromAmount,
+              walletAddress: address
+            })
+          });
+          
+          const data = await response.json();
+          if (data.success) {
+            setToAmount(data.data.toAmount);
+          } else {
+            console.error('Quote error:', data.error);
+            setToAmount('0');
+          }
+        } catch (error) {
+          console.error('Failed to get quote:', error);
+          setToAmount('0');
+        } finally {
+          setQuoteLoading(false);
+        }
+      };
+      
+      getQuote();
+    } else if (!fromAmount) {
+      setToAmount('');
     }
-  }, [fromAmount, fromToken, toToken]);
+  }, [fromAmount, fromToken, toToken, fromChain, toChain, isConnected, address]);
 
-  const handleSwap = () => {
+  const handleSwap = async () => {
+    if (!isConnected || !address) {
+      toast({
+        title: "Error",
+        description: "Please connect your wallet first",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
-    // Simulate transaction
-    setTimeout(() => {
-      setTxHash("0x1234567890abcdef");
+    
+    try {
+      // Initialize client swapper if not already done
+      if (!clientSwapperRef.current) {
+        // You'll need to get the API key from environment or config
+        const apiKey = import.meta.env.VITE_1INCH_API_KEY || 'your-api-key-here';
+        clientSwapperRef.current = new ClientSwapper(apiKey);
+        
+        // Get wallet provider from window.ethereum
+        const walletProvider = (window as any).ethereum;
+        if (!walletProvider) {
+          throw new Error('No wallet provider found. Please install MetaMask.');
+        }
+        
+        await clientSwapperRef.current.initialize(walletProvider);
+      }
+
+      // Get swap parameters from server
+      const response = await fetch(`${API_BASE_URL}/swap-params`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fromChainId: parseInt(fromChain),
+          toChainId: parseInt(toChain),
+          fromToken,
+          toToken,
+          amount: fromAmount,
+          walletAddress: address
+        })
+      });
+      
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error);
+      }
+
+      // Execute swap with user's wallet
+      const result = await clientSwapperRef.current.executeSwap(data.data);
+      
+      setTxHash(result.orderHash);
       setShowConfirmModal(true);
+      
+      // Add to swap history
+      const newSwap = {
+        id: Date.now(),
+        fromChain: chains.find(c => c.id.toString() === fromChain)?.name || fromChain,
+        toChain: chains.find(c => c.id.toString() === toChain)?.name || toChain,
+        fromToken,
+        toToken,
+        amount: fromAmount,
+        value: `$${(parseFloat(fromAmount) * 2000).toFixed(2)}`, // Mock value
+        status: 'pending',
+        txHash: result.orderHash,
+        timestamp: 'Just now'
+      };
+      
+      setSwapHistory(prev => [newSwap, ...prev.slice(0, 9)]); // Keep last 10 swaps
+      
+      toast({
+        title: "Swap Initiated",
+        description: `Order placed successfully! Hash: ${result.orderHash.slice(0, 10)}...`,
+      });
+      
+    } catch (error) {
+      console.error('Swap error:', error);
+      toast({
+        title: "Swap Failed",
+        description: error.message || "Failed to execute swap",
+        variant: "destructive"
+      });
+    } finally {
       setIsLoading(false);
-    }, 2000);
+    }
   };
 
   const handleFlipTokens = () => {
@@ -257,7 +391,7 @@ const SwapInterface = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-popover/95 backdrop-blur-sm border-border/50">
-                        {tokens.map((token) => (
+                        {fromTokens.map((token) => (
                           <SelectItem key={token.symbol} value={token.symbol}>
                             <div className="flex items-center space-x-2">
                               <span className="text-lg">{token.logo}</span>
@@ -313,7 +447,7 @@ const SwapInterface = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-popover/95 backdrop-blur-sm border-border/50">
-                        {tokens.map((token) => (
+                        {toTokens.map((token) => (
                           <SelectItem key={token.symbol} value={token.symbol}>
                             <div className="flex items-center space-x-2">
                               <span className="text-lg">{token.logo}</span>
