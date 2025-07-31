@@ -191,14 +191,14 @@ export class ClientSwapper {
       console.log('📋 Quote params:', swapParams);
 
       // Use server as CORS proxy for 1inch API
-      const response = await fetch(`${apiBaseUrl}/quote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(swapParams)
-      });
-      
+    const response = await fetch(`${apiBaseUrl}/quote`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(swapParams)
+    });
+    
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(`Quote API Error: ${errorData.error || 'Failed to get quote from server'}`);
@@ -593,7 +593,7 @@ export class ClientSwapper {
     } else {
       // For quotes, just check if amount exists and is valid when provided
       if (amount && parseFloat(amount) <= 0) {
-        throw new Error('Amount must be greater than 0');
+      throw new Error('Amount must be greater than 0');
       }
     }
     

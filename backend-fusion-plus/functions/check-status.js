@@ -1,54 +1,33 @@
-const { CrossChainSwapper } = require('./Swapper.js');
+require('dotenv').config();
+const axios = require("axios");
 
-async function checkOrderStatus(orderHash) {
-  const swapper = new CrossChainSwapper();
-  
+async function httpCall() {
+  const url =
+    "https://api.1inch.dev/fusion-plus/orders/v1.0/order/status/0xd18101a77becd523c21fe880f74ebb4f04bee42be7d5eaa20714bba2f33ca3d4";
+
+  // Debug: Check if API key is loaded
+  console.log("API Key loaded:", process.env.DEV_PORTAL_KEY ? "Yes" : "No");
+  if (!process.env.DEV_PORTAL_KEY) {
+    console.error("DEV_PORTAL_KEY environment variable is not set!");
+    return;
+  }
+
+  const config = {
+    headers: {
+      Authorization: `Bearer ${process.env.DEV_PORTAL_KEY}`,
+    },
+    params: {},
+    paramsSerializer: {
+      indexes: null,
+    },
+  };
+
   try {
-    console.log(`🔍 Checking order status for: ${orderHash}`);
-    await swapper.initializeSDK('arbitrum');
-    
-    const order = await swapper.sdk.getOrderStatus(orderHash);
-    console.log(`📊 Order Status: ${order.status}`);
-    console.log(`📋 Order Details:`, swapper.safeStringify(order));
-    
-    if (order.status === 'executed') {
-      console.log(`🎉 SUCCESS! Cross-chain swap completed!`);
-    } else if (order.status === 'pending') {
-      console.log(`⏳ Still pending... Check again in 2-3 minutes`);
-    } else {
-      console.log(`📊 Current status: ${order.status}`);
-    }
-    
+    const response = await axios.get(url, config);
+    console.log(response.data);
   } catch (error) {
-    console.error(`❌ Error checking status: ${error.message}`);
+    console.error("Error response:", error.response?.data || error.message);
   }
 }
 
-// Get order hash from command line arguments
-const args = process.argv.slice(2);
-const orderHash = args[0];
-
-if (!orderHash) {
-  console.log(`
-🔍 Order Status Checker
-
-Usage:
-  node check-status.js <orderHash>
-
-Examples:
-  node check-status.js 0x4a8027d93735048b80155f69d04a04401d8ab73ffe6b84de647ee4add4a6ef47
-  node check-status.js 0x1234567890abcdef...
-
-Your recent order hash: 0x4a8027d93735048b80155f69d04a04401d8ab73ffe6b84de647ee4add4a6ef47
-  `);
-  process.exit(1);
-}
-
-// Validate order hash format
-if (!orderHash.startsWith('0x') || orderHash.length !== 66) {
-  console.error('❌ Invalid order hash format. Should be 0x followed by 64 hex characters.');
-  process.exit(1);
-}
-
-console.log(`🚀 Checking status for order: ${orderHash}`);
-checkOrderStatus(orderHash); 
+httpCall();

@@ -6,6 +6,9 @@ require('dotenv').config();
 // Import the real Swapper logic
 const { CrossChainSwapper, NETWORKS, TOKENS } = require('./functions/Swapper.js');
 
+// Import 1inch Fusion SDK
+const { SDK, NetworkEnum } = require('@1inch/cross-chain-sdk');
+
 const app = express();
 const PORT = process.env.PORT || 9056;
 
@@ -22,7 +25,7 @@ console.log('❌ NO private keys stored on server');
 if (!process.env.DEV_PORTAL_KEY) {
   console.log('⚠️  DEV_PORTAL_KEY missing - swapping disabled');
   console.log('💡 Get your API key from https://portal.1inch.dev/');
-} else {
+  } else {
   console.log('✅ DEV_PORTAL_KEY configured - TRUE DeFi swapping enabled');
 }
 
@@ -205,19 +208,91 @@ app.post('/api/quote', async (req, res) => {
     const decimals = tokenDecimals[fromToken] || 18;
     const weiAmount = Math.floor(parseFloat(amount) * Math.pow(10, decimals)).toString();
 
-    // Get quote from 1inch API (only for price estimation, not execution)
+    // Get quote from 1inch Fusion SDK
     if (process.env.DEV_PORTAL_KEY) {
       try {
-        const defiSwapper = new CrossChainSwapper(); // TRUE DeFi swapper - no wallet needed
-        const quote = await defiSwapper.getQuote(fromNetwork, toNetwork, fromToken, toToken, amount, walletAddress);
+        console.log('🔍 Using 1inch Fusion SDK for quote...');
+        console.log('📋 Quote parameters:', {
+          fromChainId,
+          toChainId,
+          fromToken,
+          toToken,
+          amount: weiAmount,
+          walletAddress
+        });
+
+        // Initialize 1inch Fusion SDK
+        const sdk = new SDK({
+          url: "https://api.1inch.dev/fusion-plus",
+          authKey: process.env.DEV_PORTAL_KEY,
+        });
+
+        // Map chain IDs to NetworkEnum
+        const chainIdToNetwork = {
+          1: NetworkEnum.ETHEREUM,
+          10: NetworkEnum.OPTIMISM,
+          56: NetworkEnum.BSC,
+          137: NetworkEnum.POLYGON,
+          250: NetworkEnum.FANTOM,
+          42161: NetworkEnum.ARBITRUM,
+          43114: NetworkEnum.AVALANCHE,
+          8453: NetworkEnum.BASE,
+          100: NetworkEnum.GNOSIS
+        };
+
+        const srcChainId = chainIdToNetwork[parseInt(fromChainId)];
+        const dstChainId = chainIdToNetwork[parseInt(toChainId)];
+
+        if (!srcChainId || !dstChainId) {
+          throw new Error(`Unsupported chain ID: ${fromChainId} or ${toChainId}`);
+        }
+
+        // Get token addresses from TOKENS mapping
+        const srcTokenAddress = TOKENS[fromNetwork]?.[fromToken];
+        const dstTokenAddress = TOKENS[toNetwork]?.[toToken];
+
+        if (!srcTokenAddress || !dstTokenAddress) {
+          throw new Error(`Token not found: ${fromToken} on ${fromNetwork} or ${toToken} on ${toNetwork}`);
+        }
+
+        console.log('🔗 Token addresses:', {
+          srcTokenAddress,
+          dstTokenAddress
+        });
+
+        // Create quote parameters
+        const params = {
+          srcChainId,
+          dstChainId,
+          srcTokenAddress,
+          dstTokenAddress,
+          amount: weiAmount,
+          walletAddress,
+        };
+
+        console.log('🚀 Quote parameters:', params);
+
+        console.log('🚀 Calling 1inch Fusion SDK getQuote...');
+        const quote = await sdk.getQuote(params);
         
-        if (quote && quote.presets && quote.presets.length > 0) {
-          const preset = quote.presets[0]; // Get first preset
-          const estimatedOutput = preset.estimatedOutput || weiAmount;
+        console.log('✅ Quote received from 1inch Fusion SDK:');
+        
+        // Custom serializer to handle BigInt values
+        const serializeQuote = (obj) => {
+          return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'bigint') {
+              return value.toString();
+            }
+            return value;
+          }, 2);
+        };
+        
+        console.log('📊 Quote data:', serializeQuote(quote));
+
+        if (quote && quote.dstAmount) {
           const outputDecimals = tokenDecimals[toToken] || 18;
-          const humanOutput = (BigInt(estimatedOutput) / BigInt(Math.pow(10, outputDecimals))).toString();
+          const humanOutput = (BigInt(quote.dstAmount) / BigInt(Math.pow(10, outputDecimals))).toString();
           
-          console.log('✅ Quote received from TRUE DeFi API');
           console.log(`📊 Estimated output: ${humanOutput} ${toToken}`);
           
           res.json({
@@ -229,37 +304,34 @@ app.post('/api/quote', async (req, res) => {
               toToken,
               fromChain: fromChainId,
               toChain: toChainId,
-              estimatedGas: preset.estimatedGas || '0',
+              estimatedGas: quote.estimatedGas || '0',
               quote: quote
             }
           });
           return;
         } else {
-          console.log('❌ No quote presets available');
+          console.log('❌ No valid quote data received');
+          throw new Error('No valid quote data received from 1inch Fusion SDK');
         }
       } catch (error) {
-        console.error('Error getting quote from TRUE DeFi API:', error);
+        console.error('❌ 1inch Fusion SDK Error:');
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error details:', error);
+        
+        return res.status(500).json({
+          success: false,
+          error: '1inch Fusion SDK failed',
+          details: error.message,
+          message: 'Cannot provide quote without valid API response'
+        });
       }
     }
     
-    // Fallback response if TRUE DeFi API fails
-    console.log('📋 Using fallback quote estimation');
-    const realisticRate = 0.98; // Realistic 1:1 rate with small slippage
-    const estimatedOutput = (parseFloat(amount) * realisticRate).toFixed(6);
-    
-    res.json({
-      success: true,
-      data: {
-        fromAmount: amount,
-        toAmount: estimatedOutput,
-        fromToken,
-        toToken,
-        fromChain: fromChainId,
-        toChain: toChainId,
-        estimatedGas: '0',
-        quote: null,
-        fallback: true
-      }
+    // If we reach here, no quote was obtained
+    return res.status(500).json({
+      success: false,
+      error: 'No quote available',
+      message: 'TRUE DeFi API did not return a valid quote'
     });
     
   } catch (error) {
@@ -634,28 +706,28 @@ app.post('/api/execute-swap-direct', async (req, res) => {
 
       console.log(`✅ TRUE DeFi swap processed!`);
       console.log(`🆔 Result:`, JSON.stringify(result, null, 2));
-      
-      res.json({
-        success: true,
-        data: {
+        
+        res.json({
+          success: true,
+          data: {
           transactionHash: result.orderHash || result.hash,
           fromNetwork: fromChainId,
           toNetwork: toChainId,
-          fromToken,
-          toToken,
-          amount: amount,
-          userWallet: userAddress,
-          approvalTx,
+            fromToken,
+            toToken,
+            amount: amount,
+            userWallet: userAddress,
+            approvalTx,
           status: result.status || 'completed',
-          timestamp: new Date().toISOString(),
+            timestamp: new Date().toISOString(),
           orderResponse: result,
           executionMethod: 'TRUE_DeFi_user_controls_everything',
           isRealSwap: !!userSignedOrderData,
           architecture: 'user_signs_everything_server_api_only'
-        }
-      });
-      
-    } catch (error) {
+          }
+        });
+        
+      } catch (error) {
       console.error(`❌ TRUE DeFi swap failed: ${error.message}`);
       console.error(`❌ Error details:`, error.stack);
       

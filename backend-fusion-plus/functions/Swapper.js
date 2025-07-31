@@ -135,9 +135,9 @@ class ReadOnlyProvider {
 
 class CrossChainSwapper {
   constructor() {
-    this.devPortalApiKey = process?.DEV_PORTAL_KEY;
-    
-    if (!this.devPortalApiKey) {
+      this.devPortalApiKey = process?.DEV_PORTAL_KEY;
+
+      if (!this.devPortalApiKey) {
       throw new Error("Missing required environment variable: DEV_PORTAL_KEY - Get your API key from https://portal.1inch.dev/");
     }
 
