@@ -557,7 +557,10 @@ app.post('/api/execute-swap-direct', async (req, res) => {
       amount, 
       userAddress,
       approvalTx,
-      orderSignature, // Real signature from MetaMask
+      order, // Full order data from 1inch SDK (client-side)
+      secrets,
+      secretHashes,
+      hashLock,
       quote,
       timestamp 
     } = userSignedOrderData;
@@ -569,21 +572,23 @@ app.post('/api/execute-swap-direct', async (req, res) => {
       });
     }
 
-    console.log(`🚀 Executing TRUE DeFi cross-chain swap...`);
+    console.log(`🚀 Executing TRUE DeFi cross-chain swap with 1inch SDK...`);
     console.log(`📤 From: ${fromToken} on Chain ${fromChainId}`);
     console.log(`📥 To: ${toToken} on Chain ${toChainId}`);
     console.log(`👤 User Wallet: ${userAddress}`);
     console.log(`💰 Amount: ${amount}`);
-    console.log(`🔐 User signed everything in their wallet`);
+    console.log(`🔐 User created and signed order with 1inch SDK in their wallet`);
     console.log(`✅ Has approval TX: ${!!approvalTx}`);
-    console.log(`✅ Has order signature: ${!!orderSignature}`);
+    console.log(`✅ Has 1inch SDK order: ${!!order}`);
+    console.log(`✅ Has secrets: ${!!secrets && secrets.length > 0}`);
+    console.log(`✅ Has hash lock: ${!!hashLock}`);
     
-    if (!orderSignature) {
+    if (!order) {
       return res.status(400).json({
         success: false,
-        error: 'Missing user order signature',
-        details: 'TRUE DeFi requires user to sign order in MetaMask',
-        requiresUserAction: 'SIGN_ORDER_IN_METAMASK'
+        error: 'Missing user order data',
+        details: 'TRUE DeFi requires user to create and sign order using 1inch SDK in MetaMask',
+        requiresUserAction: 'CREATE_ORDER_WITH_1INCH_SDK_IN_METAMASK'
       });
     }
 
@@ -614,9 +619,11 @@ app.post('/api/execute-swap-direct', async (req, res) => {
         });
       }
 
-      console.log(`📋 Processing REAL user signed order data...`);
-      console.log(`🔐 User signed order:`, userSignedOrderData.orderSignature ? 'YES' : 'NO');
+      console.log(`📋 Processing REAL user order data from 1inch SDK...`);
+      console.log(`🔐 User created order with 1inch SDK:`, userSignedOrderData.order ? 'YES' : 'NO');
       console.log(`✅ User approved tokens:`, userSignedOrderData.approvalTx ? 'YES' : 'NO');
+      console.log(`🔑 Has secrets for order:`, userSignedOrderData.secrets ? 'YES' : 'NO');
+      console.log(`🔒 Has hash lock:`, userSignedOrderData.hashLock ? 'YES' : 'NO');
       
       // Submit REAL signed order to 1inch
       const result = await trueDeFiSwapper.processUserSignedOrder(userSignedOrderData);
