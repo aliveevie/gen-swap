@@ -1,6 +1,6 @@
-const { SDK, HashLock, PrivateKeyProviderConnector, NetworkEnum } = require("@1inch/cross-chain-sdk");
+const { SDK, HashLock, NetworkEnum } = require("@1inch/cross-chain-sdk");
 const { Web3 } = require('web3');
-const { solidityPackedKeccak256, randomBytes, Contract, Wallet, JsonRpcProvider } = require('ethers');
+const { solidityPackedKeccak256, randomBytes } = require('ethers');
 const env = require('dotenv');
 const process = env.config().parsed;
 
@@ -116,219 +116,69 @@ const TOKENS = {
   }
 };
 
-// ABI for token operations
-const TOKEN_ABI = [
-  {
-    "constant": true,
-    "inputs": [{"name": "_owner", "type": "address"}],
-    "name": "balanceOf",
-    "outputs": [{"name": "balance", "type": "uint256"}],
-    "type": "function"
-  },
-  {
-    "constant": true,
-    "inputs": [
-      {"name": "_owner", "type": "address"},
-      {"name": "_spender", "type": "address"}
-    ],
-    "name": "allowance",
-    "outputs": [{"name": "", "type": "uint256"}],
-    "type": "function"
-  },
-  {
-    "constant": false,
-    "inputs": [
-      {"name": "spender", "type": "address"},
-      {"name": "amount", "type": "uint256"}
-    ],
-    "name": "approve",
-    "outputs": [{"name": "", "type": "bool"}],
-    "payable": false,
-    "stateMutability": "nonpayable",
-    "type": "function"
+// Minimal blockchain provider for API calls only (no signing)
+class ReadOnlyProvider {
+  constructor(rpcUrl) {
+    this.web3 = new Web3(rpcUrl);
   }
-];
+
+  eth = {
+    call: async (transactionConfig) => {
+      return await this.web3.eth.call(transactionConfig);
+    }
+  };
+
+  extend() {
+    // No-op for compatibility
+  }
+}
 
 class CrossChainSwapper {
-  constructor(userWalletProvider = null, userAddress = null) {
-    // Allow using user wallet instead of server wallet
-    if (userWalletProvider && userAddress) {
-      this.useUserWallet = true;
-      this.userWalletProvider = userWalletProvider;
-      this.userAddress = userAddress;
-      this.devPortalApiKey = process?.DEV_PORTAL_KEY;
-    } else {
-      // Fallback to server wallet mode
-      this.useUserWallet = false;
-      this.makerPrivateKey = process?.WALLET_KEY;
-      this.makerAddress = process?.WALLET_ADDRESS;
-      this.devPortalApiKey = process?.DEV_PORTAL_KEY;
-
-      if (!this.devPortalApiKey) {
-        throw new Error("Missing required environment variable: DEV_PORTAL_KEY");
-      }
+  constructor(userAddress) {
+    this.userAddress = userAddress;
+    this.devPortalApiKey = process?.DEV_PORTAL_KEY;
+    
+    if (!this.devPortalApiKey) {
+      throw new Error("Missing required environment variable: DEV_PORTAL_KEY - Get your API key from https://portal.1inch.dev/");
     }
 
+    if (!userAddress) {
+      throw new Error("User wallet address is required for DeFi operations");
+    }
+
+    console.log(`🔧 Setting up DeFi swapper for user: ${userAddress}`);
+    console.log(`🔧 Server will use DEV_PORTAL_KEY for API access only`);
+    console.log(`🔧 User maintains full control of their tokens via wallet approvals`);
+
     this.sdk = null;
-    this.web3Instances = {};
+    this.readOnlyProviders = {};
   }
 
-  // Initialize SDK for a specific network with user or server wallet
+  // Initialize SDK for API calls only (no private key required)
   async initializeSDK(networkName) {
     const network = NETWORKS[networkName];
     if (!network) {
       throw new Error(`Unsupported network: ${networkName}`);
     }
 
-    console.log(`🔧 Initializing SDK for ${network.name}...`);
+    console.log(`🔧 Initializing DeFi SDK for ${network.name}...`);
+    console.log(`👤 Creating orders for user: ${this.userAddress}`);
+    console.log(`🔧 User has already approved tokens in their wallet`);
     
-    const web3Instance = new Web3(network.rpc);
-    this.web3Instances[networkName] = web3Instance;
+    // Create read-only provider for blockchain state queries
+    const readOnlyProvider = new ReadOnlyProvider(network.rpc);
+    this.readOnlyProviders[networkName] = readOnlyProvider;
     
-    let blockchainProvider;
-    
-    if (this.useUserWallet) {
-      console.log(`👤 Using USER wallet for swap execution`);
-      console.log(`👤 User address: ${this.userAddress}`);
-      
-      // Create provider using user's wallet connection
-      // This uses the user's already-approved tokens
-      blockchainProvider = new PrivateKeyProviderConnector(this.userWalletProvider, web3Instance);
-    } else {
-      console.log(`🏢 Using SERVER wallet for swap execution`);
-      if (!this.makerPrivateKey) {
-        throw new Error("No wallet available - need either user wallet or server WALLET_KEY");
-      }
-      blockchainProvider = new PrivateKeyProviderConnector(this.makerPrivateKey, web3Instance);
-    }
-    
+    // Initialize SDK without private key - only for API calls
     this.sdk = new SDK({
       url: 'https://api.1inch.dev/fusion-plus',
       authKey: this.devPortalApiKey,
-      blockchainProvider
+      blockchainProvider: readOnlyProvider
     });
 
-    console.log(`✅ SDK initialized for ${network.name} with ${this.useUserWallet ? 'USER' : 'SERVER'} wallet`);
+    console.log(`✅ DeFi SDK initialized for ${network.name}`);
+    console.log(`✅ Ready to create orders using user's approved tokens`);
     return this.sdk;
-  }
-
-  // Check wallet balance on a specific network
-  async checkBalance(networkName, tokenSymbol = 'USDC') {
-    const network = NETWORKS[networkName];
-    const web3Instance = this.web3Instances[networkName];
-    
-    if (!web3Instance) {
-      throw new Error(`Web3 instance not initialized for ${networkName}`);
-    }
-
-    console.log(`🔍 Checking ${tokenSymbol} balance on ${network.name}...`);
-    
-    // Check native token balance
-    const nativeBalance = await web3Instance.eth.getBalance(this.makerAddress);
-    console.log(`💰 ${network.name} Native Balance:`, web3Instance.utils.fromWei(nativeBalance, 'ether'));
-    
-    // Handle native tokens (ETH, MATIC, BNB, etc.)
-    const nativeTokens = ['ETH', 'MATIC', 'BNB', 'AVAX', 'OP', 'FTM'];
-    if (nativeTokens.includes(tokenSymbol)) {
-      console.log(`💵 ${tokenSymbol} Balance: ${nativeBalance} wei`);
-      console.log(`💵 ${tokenSymbol} Balance: ${web3Instance.utils.fromWei(nativeBalance, 'ether')} ${tokenSymbol}`);
-      return { nativeBalance, tokenBalance: nativeBalance, formattedBalance: web3Instance.utils.fromWei(nativeBalance, 'ether') };
-    }
-    
-    // Check ERC-20 token balance
-    const tokenAddress = TOKENS[networkName][tokenSymbol];
-    if (!tokenAddress) {
-      throw new Error(`Token ${tokenSymbol} not supported on ${networkName}`);
-    }
-
-    try {
-      const tokenContract = new web3Instance.eth.Contract(TOKEN_ABI, tokenAddress);
-      const tokenBalance = await tokenContract.methods.balanceOf(this.makerAddress).call();
-      
-      // Get token decimals
-      const decimals = tokenSymbol === 'USDC' || tokenSymbol === 'USDT' ? 6 : 18;
-      const formattedBalance = Number(tokenBalance) / Math.pow(10, decimals);
-      
-      console.log(`💵 ${tokenSymbol} Balance: ${tokenBalance} wei`);
-      console.log(`💵 ${tokenSymbol} Balance: ${formattedBalance.toFixed(6)} ${tokenSymbol}`);
-      
-      return { nativeBalance, tokenBalance, formattedBalance };
-    } catch (error) {
-      console.error(`❌ Error checking ${tokenSymbol} balance: ${error.message}`);
-      throw new Error(`Failed to check ${tokenSymbol} balance: ${error.message}`);
-    }
-  }
-
-  // Approve token spending
-  async approveToken(networkName, tokenSymbol, spenderAddress) {
-    const network = NETWORKS[networkName];
-    
-    // Handle native tokens (ETH, MATIC, BNB, etc.) - need to approve wrapped version
-    const nativeTokens = ['ETH', 'MATIC', 'BNB', 'AVAX', 'OP', 'FTM'];
-    if (nativeTokens.includes(tokenSymbol)) {
-      console.log(`🔐 Native ${tokenSymbol} detected - approving wrapped token spending`);
-      
-      // Get the wrapped token address (WETH, WMATIC, etc.)
-      const wrappedTokenSymbol = `W${tokenSymbol}`;
-      const tokenAddress = TOKENS[networkName][wrappedTokenSymbol];
-      
-      if (!tokenAddress) {
-        throw new Error(`Wrapped token address not found for ${wrappedTokenSymbol} on ${networkName}`);
-      }
-      
-      console.log(`🔐 Approving ${wrappedTokenSymbol} on ${network.name}...`);
-      
-      const provider = new JsonRpcProvider(network.rpc);
-      const tokenContract = new Contract(tokenAddress, TOKEN_ABI, new Wallet(this.makerPrivateKey, provider));
-      
-      const approvalTx = await tokenContract.approve(
-        spenderAddress,
-        (2n**256n - 1n) // unlimited allowance
-      );
-      
-      console.log(`⏳ Waiting for approval transaction...`);
-      await approvalTx.wait();
-      console.log(`✅ ${wrappedTokenSymbol} approval successful on ${network.name}`);
-      
-      return approvalTx.hash;
-    }
-    
-    // Handle regular ERC-20 tokens
-    console.log(`🔐 Approving ${tokenSymbol} on ${network.name}...`);
-    
-    const tokenAddress = TOKENS[networkName][tokenSymbol];
-    if (!tokenAddress) {
-      throw new Error(`Token ${tokenSymbol} not supported on ${networkName}`);
-    }
-    
-    const provider = new JsonRpcProvider(network.rpc);
-    const tokenContract = new Contract(tokenAddress, TOKEN_ABI, new Wallet(this.makerPrivateKey, provider));
-    
-    const approvalTx = await tokenContract.approve(
-      spenderAddress,
-      (2n**256n - 1n) // unlimited allowance
-    );
-    
-    console.log(`⏳ Waiting for approval transaction...`);
-    await approvalTx.wait();
-    console.log(`✅ ${tokenSymbol} approval successful on ${network.name}`);
-    
-    return approvalTx.hash;
-  }
-
-  // Generate random bytes for hash lock
-  getRandomBytes32() {
-    return '0x' + Buffer.from(randomBytes(32)).toString('hex');
-  }
-
-  // Safe JSON serialization that handles BigInt
-  safeStringify(obj, space = 2) {
-    return JSON.stringify(obj, (key, value) => {
-      if (typeof value === 'bigint') {
-        return value.toString();
-      }
-      return value;
-    }, space);
   }
 
   // Convert human-readable amount to proper decimal format
@@ -355,20 +205,21 @@ class CrossChainSwapper {
     return weiAmount.toString();
   }
 
-  // Execute cross-chain swap using user's approved tokens
+  // Execute cross-chain swap using user's already-approved tokens
   async executeCrossChainSwapForUser(fromNetwork, toNetwork, fromToken, toToken, humanAmount, userAddress) {
-    console.log(`🚀 Starting cross-chain swap for USER wallet...`);
+    console.log(`🚀 Starting DeFi cross-chain swap for USER...`);
     console.log(`📤 From: ${NETWORKS[fromNetwork].name} (${fromToken})`);
     console.log(`📥 To: ${NETWORKS[toNetwork].name} (${toToken})`);
-    console.log(`💰 Human Amount: ${humanAmount} ${fromToken}`);
+    console.log(`💰 Amount: ${humanAmount} ${fromToken}`);
     console.log(`👤 User Address: ${userAddress}`);
+    console.log(`🔧 User has ALREADY approved tokens in their wallet`);
     console.log('---');
 
     // Convert human amount to wei
     const weiAmount = this.convertHumanAmountToWei(humanAmount, fromToken);
     console.log(`💰 Wei Amount: ${weiAmount}`);
 
-    // Initialize SDK for source network (using server for API calls, but user tokens)
+    // Initialize SDK for API calls only
     await this.initializeSDK(fromNetwork);
     
     // Get token addresses
@@ -379,12 +230,13 @@ class CrossChainSwapper {
       throw new Error(`Token not supported for this network pair`);
     }
 
-    console.log(`📋 Using USER approved tokens...`);
+    console.log(`📋 Using USER's approved tokens...`);
     console.log(`📍 Source Token: ${srcTokenAddress}`);
     console.log(`📍 Destination Token: ${dstTokenAddress}`);
-    console.log(`👤 User already approved spending via wallet`);
+    console.log(`👤 User address: ${userAddress}`);
+    console.log(`🔧 Tokens already approved by user in their wallet`);
 
-    // Prepare swap parameters for USER's tokens
+    // Prepare swap parameters for USER's approved tokens
     const params = {
       srcChainId: NETWORKS[fromNetwork].id,
       dstChainId: NETWORKS[toNetwork].id,
@@ -392,17 +244,17 @@ class CrossChainSwapper {
       dstTokenAddress: dstTokenAddress,
       amount: weiAmount,
       enableEstimate: true,
-      walletAddress: userAddress  // Use USER's address, not server address
+      walletAddress: userAddress  // User's address - they own the tokens
     };
 
     console.log(`📋 Swap Parameters for USER:`, this.safeStringify(params));
 
-    // Get quote for USER's swap
-    console.log(`🔍 Getting quote from 1inch Fusion+ for USER...`);
+    // Get quote from 1inch Fusion+ API
+    console.log(`🔍 Getting quote from 1inch Fusion+ for USER's tokens...`);
     let quote;
     try {
       quote = await this.sdk.getQuote(params);
-      console.log(`✅ Quote received for USER wallet`);
+      console.log(`✅ Quote received for USER's approved tokens`);
       console.log(`📊 Quote Details:`, this.safeStringify(quote));
       
       if (!quote || !quote.getPreset) {
@@ -415,7 +267,7 @@ class CrossChainSwapper {
 
     // Generate secrets for hash lock
     const secretsCount = quote.getPreset().secretsCount;
-    console.log(`🔐 Generating ${secretsCount} secrets for USER swap...`);
+    console.log(`🔐 Generating ${secretsCount} secrets for USER's swap...`);
     
     const secrets = Array.from({ length: secretsCount }).map(() => this.getRandomBytes32());
     const secretHashes = secrets.map(x => HashLock.hashSecret(x));
@@ -434,15 +286,15 @@ class CrossChainSwapper {
 
     console.log(`🔐 Hash lock created for USER:`, hashLock);
 
-    // Place order for USER's approved tokens
-    console.log(`📝 Placing cross-chain order for USER wallet...`);
+    // Place order using USER's approved tokens
+    console.log(`📝 Placing cross-chain order for USER's approved tokens...`);
     try {
       const orderParams = {
-        walletAddress: userAddress,  // USER's address
+        walletAddress: userAddress,  // USER owns the tokens
         hashLock,
         secretHashes,
-        permit: null,
-        signature: null
+        permit: null,  // User already approved in wallet
+        signature: null  // No server signing needed
       };
 
       console.log(`📋 Order Parameters for USER:`, this.safeStringify(orderParams));
@@ -454,7 +306,7 @@ class CrossChainSwapper {
       }
 
       const orderHash = orderResponse.orderHash;
-      console.log(`✅ Order placed successfully for USER!`);
+      console.log(`✅ Order placed successfully for USER's approved tokens!`);
       console.log(`🆔 Order Hash: ${orderHash}`);
       console.log(`📊 Order Response:`, this.safeStringify(orderResponse));
       
@@ -463,6 +315,21 @@ class CrossChainSwapper {
       console.error(`❌ Error placing order for USER: ${error.message}`);
       throw new Error(`Failed to place order: ${error.message}`);
     }
+  }
+
+  // Generate random bytes for hash lock
+  getRandomBytes32() {
+    return '0x' + Buffer.from(randomBytes(32)).toString('hex');
+  }
+
+  // Safe JSON serialization that handles BigInt
+  safeStringify(obj, space = 2) {
+    return JSON.stringify(obj, (key, value) => {
+      if (typeof value === 'bigint') {
+        return value.toString();
+      }
+      return value;
+    }, space);
   }
 
   // Get supported networks
@@ -477,18 +344,21 @@ class CrossChainSwapper {
 
   // Test function to verify setup
   async testSetup() {
-    console.log(`🧪 Testing setup...`);
-    console.log(`📍 Wallet Address: ${this.makerAddress}`);
+    console.log(`🧪 Testing DeFi setup...`);
+    console.log(`📍 User Address: ${this.userAddress}`);
     console.log(`🔑 API Key: ${this.devPortalApiKey ? '✅ Set' : '❌ Missing'}`);
     console.log(`🌐 Supported Networks:`, this.getSupportedNetworks());
+    console.log(`🔧 Architecture: User wallet approvals + DEV_PORTAL_KEY for API`);
     
     for (const network of this.getSupportedNetworks()) {
       console.log(`📋 ${network.toUpperCase()} Tokens:`, this.getSupportedTokens(network));
     }
     
-    console.log(`✅ Setup test completed`);
+    console.log(`✅ DeFi setup test completed`);
   }
 }
+
+// ABI for token operations - Removed since users handle all approvals in their wallets
 
 // CLI interface
 async function main() {
@@ -518,18 +388,20 @@ async function main() {
   
   if (args.length === 0) {
     console.log(`
-🚀 Cross-Chain Swapper CLI
+🚀 DeFi Cross-Chain Swapper CLI
 
 Usage:
-  node Swapper.js test-setup
-  node Swapper.js check-balance <network> [token]
-  node Swapper.js swap <fromNetwork> <toNetwork> <fromToken> <toToken> <amount>
+  node Swapper.js test-setup <userAddress>
+  node Swapper.js swap <userAddress> <fromNetwork> <toNetwork> <fromToken> <toToken> <amount>
 
 Examples:
-  node Swapper.js test-setup
-  node Swapper.js check-balance arbitrum USDC
-  node Swapper.js swap arbitrum base USDC USDC 1000000
-  node Swapper.js swap ethereum polygon WETH USDC 1000000000000000000
+  node Swapper.js test-setup 0x1234567890123456789012345678901234567890
+  node Swapper.js swap 0x1234... arbitrum base USDC USDC 100
+
+Note: 
+  - Users must approve tokens in their own wallet (MetaMask, etc.)
+  - Server only uses DEV_PORTAL_KEY for API access
+  - This is a true DeFi architecture where users control their tokens
 
 Supported Networks: ${Object.keys(NETWORKS).join(', ')}
     `);
@@ -537,7 +409,14 @@ Supported Networks: ${Object.keys(NETWORKS).join(', ')}
   }
 
   const command = args[0];
-  const swapper = new CrossChainSwapper();
+  const userAddress = args[1]; // Get user address for the command
+  
+  if (!userAddress) {
+    console.error('❌ User wallet address is required');
+    return;
+  }
+  
+  const swapper = new CrossChainSwapper(userAddress);
 
   try {
     switch (command) {
@@ -545,37 +424,28 @@ Supported Networks: ${Object.keys(NETWORKS).join(', ')}
         await swapper.testSetup();
         break;
         
-      case 'check-balance':
-        const network = args[1];
-        const token = args[2] || 'USDC';
-        if (!network) {
-          console.error('❌ Network parameter required for check-balance');
-          return;
-        }
-        await swapper.initializeSDK(network);
-        await swapper.checkBalance(network, token);
-        break;
-        
       case 'swap':
-        const fromNetwork = args[1];
-        const toNetwork = args[2];
-        const fromToken = args[3];
-        const toToken = args[4];
-        const amount = args[5];
+        const fromNetwork = args[2];
+        const toNetwork = args[3];
+        const fromToken = args[4];
+        const toToken = args[5];
+        const amount = args[6];
         
         if (!fromNetwork || !toNetwork || !fromToken || !toToken || !amount) {
           console.error('❌ Missing parameters for swap command');
-          console.error('Usage: node Swapper.js swap <fromNetwork> <toNetwork> <fromToken> <toToken> <amount>');
+          console.error('Usage: node Swapper.js swap <userAddress> <fromNetwork> <toNetwork> <fromToken> <toToken> <amount>');
           return;
         }
         
-        console.log(`🔄 Starting cross-chain swap...`);
+        console.log(`🔄 Starting DeFi cross-chain swap...`);
         console.log(`📤 From: ${fromNetwork} ${fromToken}`);
         console.log(`📥 To: ${toNetwork} ${toToken}`);
         console.log(`💰 Amount: ${amount}`);
+        console.log(`👤 User: ${userAddress}`);
+        console.log(`🔧 User must have already approved tokens in their wallet`);
         
-        const result = await swapper.executeCrossChainSwapForUser(fromNetwork, toNetwork, fromToken, toToken, amount, swapper.userAddress);
-        console.log(`🎉 Swap initiated successfully!`);
+        const result = await swapper.executeCrossChainSwapForUser(fromNetwork, toNetwork, fromToken, toToken, amount, userAddress);
+        console.log(`🎉 DeFi swap initiated successfully!`);
         console.log(`🆔 Order Hash: ${result.orderHash}`);
         break;
         

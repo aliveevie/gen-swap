@@ -18,13 +18,15 @@ let swapper = null;
 try {
   // Only initialize if we have the required environment variables
   if (process.env.DEV_PORTAL_KEY) {
-    swapper = new CrossChainSwapper();
-    console.log('✅ CrossChainSwapper initialized successfully');
+    // Note: We don't initialize a swapper here since each request creates one for the specific user
+    console.log('✅ DEV_PORTAL_KEY found - DeFi swapping enabled');
+    console.log('🔧 Architecture: User wallet approvals + DEV_PORTAL_KEY for API access');
   } else {
-    console.log('⚠️  No DEV_PORTAL_KEY found - using client-side execution only');
+    console.log('⚠️  No DEV_PORTAL_KEY found - swapping disabled');
+    console.log('💡 Get your API key from https://portal.1inch.dev/ to enable DeFi swaps');
   }
 } catch (error) {
-  console.log('⚠️  CrossChainSwapper initialization failed (will use client-side execution):', error.message);
+  console.log('⚠️  DeFi swapper setup notice:', error.message);
 }
 
 // Helper functions
@@ -616,75 +618,82 @@ app.post('/api/execute-swap-direct', async (req, res) => {
       });
     }
 
-    // Execute real cross-chain swap using USER's wallet and approval
-    if (process.env.DEV_PORTAL_KEY) {
-      try {
-        console.log(`🔧 Creating swapper with USER wallet data...`);
-        console.log(`👤 User has approved token spending: ${approvalTx || 'existing approval'}`);
-        
-        // Create swapper instance that will use user's signed approvals
-        // The user already approved token spending in their wallet
-        const userSwapper = new CrossChainSwapper(null, userAddress);
-        
-        // Initialize swapper with the source network
-        await userSwapper.initializeSDK(fromNetworkName);
-        
-        console.log(`📋 Executing cross-chain swap with USER-approved tokens...`);
-        console.log(`📤 From Network: ${fromNetworkName}`);
-        console.log(`📥 To Network: ${toNetworkName}`);
-        console.log(`💰 From Token: ${fromToken}`);
-        console.log(`💰 To Token: ${toToken}`);
-        console.log(`💵 Amount: ${amount}`);
-        
-        // Execute swap using user's approved tokens
-        // The 1inch contract can now spend user's tokens because they approved it
-        const result = await userSwapper.executeCrossChainSwapForUser(
-          fromNetworkName,
-          toNetworkName,
+    // Execute real cross-chain swap using USER's approved tokens
+    if (!process.env.DEV_PORTAL_KEY) {
+      return res.status(500).json({
+        success: false,
+        error: 'DEV_PORTAL_KEY not configured. Cannot execute swaps.',
+        details: 'Get your API key from https://portal.1inch.dev/ to enable DeFi swaps.'
+      });
+    }
+
+    try {
+      console.log(`🚀 Starting DeFi cross-chain swap execution...`);
+      console.log(`👤 User has approved tokens: ${approvalTx || 'existing approval'}`);
+      console.log(`👤 User wallet: ${userAddress}`);
+      console.log(`🔧 Server uses DEV_PORTAL_KEY for API access only`);
+      
+      // Create DeFi swapper for user's approved tokens
+      // No server wallet required - user controls everything via approvals
+      const defiSwapper = new CrossChainSwapper(userAddress);
+      
+      // Initialize SDK for API calls
+      await defiSwapper.initializeSDK(fromNetworkName);
+      
+      console.log(`📋 Executing DeFi cross-chain swap...`);
+      console.log(`📤 From Network: ${fromNetworkName}`);
+      console.log(`📥 To Network: ${toNetworkName}`);
+      console.log(`💰 From Token: ${fromToken}`);
+      console.log(`💰 To Token: ${toToken}`);
+      console.log(`💵 Amount: ${amount}`);
+      
+      // Execute swap using user's approved tokens
+      const result = await defiSwapper.executeCrossChainSwapForUser(
+        fromNetworkName,
+        toNetworkName,
+        fromToken,
+        toToken,
+        amount,
+        userAddress
+      );
+
+      console.log(`✅ DeFi swap executed successfully!`);
+      console.log(`🆔 Order Hash: ${result.orderHash}`);
+      
+      res.json({
+        success: true,
+        data: {
+          transactionHash: result.orderHash,
+          fromNetwork: fromNetworkName,
+          toNetwork: toNetworkName,
           fromToken,
           toToken,
-          amount,
-          userAddress
-        );
-
-        console.log(`✅ User wallet swap executed successfully!`);
-        console.log(`🆔 Order Hash: ${result.orderHash}`);
-        
-        res.json({
-          success: true,
-          data: {
-            transactionHash: result.orderHash,
-            fromNetwork: fromNetworkName,
-            toNetwork: toNetworkName,
-            fromToken,
-            toToken,
-            amount: amount,
-            userWallet: userAddress,
-            approvalTx,
-            status: 'completed',
-            timestamp: new Date().toISOString(),
-            orderResponse: result.orderResponse,
-            executionMethod: 'user_wallet_direct',
-            isRealSwap: true
-          }
-        });
-        
-      } catch (error) {
-        console.error(`❌ User wallet swap failed: ${error.message}`);
-        
-        // Don't fall back to fake transactions - return the real error
-        res.status(500).json({
-          success: false,
-          error: `Real swap failed: ${error.message}`,
-          details: 'User wallet swap execution failed. Check user approvals and balances.'
-        });
-      }
-    } else {
-      // Return error if no API key - don't do fake swaps
+          amount: amount,
+          userWallet: userAddress,
+          approvalTx,
+          status: 'completed',
+          timestamp: new Date().toISOString(),
+          orderResponse: result.orderResponse,
+          executionMethod: 'defi_user_controlled',
+          isRealSwap: true,
+          architecture: 'user_wallet_approvals_only'
+        }
+      });
+      
+    } catch (error) {
+      console.error(`❌ DeFi swap execution failed: ${error.message}`);
+      console.error(`❌ Error details:`, error.stack);
+      
+      // Return detailed error information
       res.status(500).json({
         success: false,
-        error: 'DEV_PORTAL_KEY not configured. Cannot execute real swaps.',
-        details: 'Server configuration missing for 1inch API access.'
+        error: `DeFi swap failed: ${error.message}`,
+        details: 'Check user token approvals and DEV_PORTAL_KEY configuration.',
+        errorType: error.constructor.name,
+        serverConfig: {
+          hasDevPortalKey: !!process.env.DEV_PORTAL_KEY,
+          architecture: 'user_controlled_defi'
+        }
       });
     }
     
@@ -707,11 +716,13 @@ app.use((req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 GenSwap API Server running on port ${PORT}`);
+  console.log(`🚀 GenSwap DeFi API Server running on port ${PORT}`);
   console.log(`📡 API Base URL: http://localhost:${PORT}/api`);
   console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
-  console.log(`🔧 Swapper Status: ${swapper ? '✅ Initialized' : '⚠️  Client-side only'}`);
+  console.log(`🔧 DeFi Architecture: ${process.env.DEV_PORTAL_KEY ? '✅ User wallet approvals + API access' : '⚠️  DEV_PORTAL_KEY required'}`);
+  console.log(`💰 User Control: Users approve tokens in their own wallets`);
+  console.log(`🔑 Server Role: API access only (no private key signing for users)`);
 });
 
 module.exports = app;
