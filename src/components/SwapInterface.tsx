@@ -59,6 +59,8 @@ const SwapInterface = () => {
   const [fromTokens, setFromTokens] = useState(defaultTokens);
   const [toTokens, setToTokens] = useState(defaultTokens);
   const [swapHistory, setSwapHistory] = useState([]);
+  const [swapParams, setSwapParams] = useState(null);
+  const [isApproved, setIsApproved] = useState(false);
   const { toast } = useToast();
   
   // Client swapper instance
@@ -153,53 +155,121 @@ const SwapInterface = () => {
     }
   }, [fromChain, toChain, chains]);
 
-  useEffect(() => {
-    if (fromAmount && fromToken && toToken && isConnected && address) {
-      setQuoteLoading(true);
-      
-      const getQuote = async () => {
-        try {
-          const response = await fetch(`${API_BASE_URL}/quote`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              fromChainId: parseInt(fromChain),
-              toChainId: parseInt(toChain),
-              fromToken,
-              toToken,
-              amount: fromAmount,
-              walletAddress: address
-            })
-          });
-          
-          const data = await response.json();
-          if (data.success) {
-            setToAmount(data.data.toAmount);
-          } else {
-            console.error('Quote error:', data.error);
-            setToAmount('0');
-          }
-        } catch (error) {
-          console.error('Failed to get quote:', error);
-          setToAmount('0');
-        } finally {
-          setQuoteLoading(false);
-        }
-      };
-      
-      getQuote();
-    } else if (!fromAmount) {
-      setToAmount('');
+  // Remove automatic quote fetching - only fetch when user explicitly requests
+  // useEffect(() => {
+  //   if (fromAmount && fromToken && toToken && isConnected && address) {
+  //     setQuoteLoading(true);
+  //     
+  //     const getQuote = async () => {
+  //       try {
+  //         const response = await fetch(`${API_BASE_URL}/quote`, {
+  //           method: 'POST',
+  //           headers: {
+  //             'Content-Type': 'application/json',
+  //           },
+  //           body: JSON.stringify({
+  //             fromChainId: parseInt(fromChain),
+  //             toChainId: parseInt(toChain),
+  //             fromToken,
+  //             toToken,
+  //             amount: fromAmount,
+  //             walletAddress: address
+  //           })
+  //         });
+  //         
+  //         const data = await response.json();
+  //         if (data.success) {
+  //           setToAmount(data.data.toAmount);
+  //         } else {
+  //           console.error('Quote error:', data.error);
+  //           setToAmount('0');
+  //         }
+  //       } catch (error) {
+  //         console.error('Failed to get quote:', error);
+  //         setToAmount('0');
+  //       } finally {
+  //         setQuoteLoading(false);
+  //       }
+  //     };
+  //     
+  //     getQuote();
+  //   } else if (!fromAmount) {
+  //     setToAmount('');
+  //   }
+  // }, [fromAmount, fromToken, toToken, fromChain, toChain, isConnected, address]);
+
+  // Manual quote fetching function
+  const getQuote = async () => {
+    if (!fromAmount || !fromToken || !toToken || !isConnected || !address) {
+      toast({
+        title: "Error",
+        description: "Please enter amount and connect wallet first",
+        variant: "destructive"
+      });
+      return;
     }
-  }, [fromAmount, fromToken, toToken, fromChain, toChain, isConnected, address]);
+
+    setQuoteLoading(true);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fromChainId: parseInt(fromChain),
+          toChainId: parseInt(toChain),
+          fromToken,
+          toToken,
+          amount: fromAmount,
+          walletAddress: address
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setToAmount(data.data.toAmount);
+        toast({
+          title: "Quote Received",
+          description: `Estimated output: ${data.data.toAmount} ${toToken}`,
+        });
+      } else {
+        console.error('Quote error:', data.error);
+        setToAmount('0');
+        toast({
+          title: "Quote Failed",
+          description: data.error || "Failed to get quote",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Failed to get quote:', error);
+      setToAmount('0');
+      toast({
+        title: "Quote Failed",
+        description: "Failed to get quote. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
 
   const handleSwap = async () => {
     if (!isConnected || !address) {
       toast({
         title: "Error",
         description: "Please connect your wallet first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!fromAmount || parseFloat(fromAmount) <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid amount",
         variant: "destructive"
       });
       return;
@@ -221,8 +291,14 @@ const SwapInterface = () => {
         await clientSwapperRef.current.initialize(walletProvider);
       }
 
-      // Execute swap via server API
-      const result = await clientSwapperRef.current.executeSwap({
+      // Show approval pending toast
+      toast({
+        title: "Requesting Approval",
+        description: "Please check your wallet for the approval popup...",
+      });
+
+      // Get swap parameters and handle token approval
+      const result = await clientSwapperRef.current.getSwapParameters({
         fromChainId: parseInt(fromChain),
         toChainId: parseInt(toChain),
         fromToken,
@@ -230,9 +306,6 @@ const SwapInterface = () => {
         amount: fromAmount,
         walletAddress: address
       }, API_BASE_URL);
-      
-      setTxHash(result.orderHash);
-      setShowConfirmModal(true);
       
       // Add to swap history
       const newSwap = {
@@ -242,26 +315,122 @@ const SwapInterface = () => {
         fromToken,
         toToken,
         amount: fromAmount,
-        value: `$${(parseFloat(fromAmount) * 2000).toFixed(2)}`, // Mock value
-        status: 'pending',
-        txHash: result.orderHash,
+        value: `$${(parseFloat(fromAmount) * 1).toFixed(2)}`, // Realistic value (1:1 for USDC)
+        status: result.status === 'approved' ? 'approved' : 'pending',
+        txHash: result.approvalTx || result.orderHash,
         timestamp: 'Just now'
       };
       
       setSwapHistory(prev => [newSwap, ...prev.slice(0, 9)]); // Keep last 10 swaps
       
-      toast({
-        title: "Swap Initiated",
-        description: `Order placed successfully! Hash: ${result.orderHash.slice(0, 10)}...`,
-      });
+      if (result.status === 'approved' || result.status === 'ready_to_swap') {
+        setSwapParams(result.swapParams);
+        setIsApproved(true);
+        setTxHash(result.approvalTx || result.orderHash);
+        
+        if (result.status === 'approved') {
+          setShowConfirmModal(true);
+          toast({
+            title: "✅ Token Approved Successfully!",
+            description: `Transaction hash: ${(result.approvalTx || result.orderHash).slice(0, 10)}...`,
+          });
+        } else {
+          toast({
+            title: "Token Already Approved",
+            description: `Token already has sufficient allowance. Ready to execute swap.`,
+          });
+        }
+      }
       
     } catch (error) {
       console.error('Swap error:', error);
+      
+      // Check if it's a user rejection
+      if (error.message && error.message.includes('user rejected')) {
+        toast({
+          title: "Approval Cancelled",
+          description: "You cancelled the token approval in your wallet.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Approval Failed",
+          description: error.message || "Failed to approve token spending. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExecuteSwap = async () => {
+    if (!isConnected || !address || !swapParams) {
       toast({
-        title: "Swap Failed",
-        description: error.message || "Failed to execute swap",
+        title: "Error",
+        description: "Please approve tokens first",
         variant: "destructive"
       });
+      return;
+    }
+
+    setIsLoading(true);
+    
+    try {
+      // Show swap execution toast
+      toast({
+        title: "Executing Swap",
+        description: "Please check your wallet for the swap transaction...",
+      });
+
+      // Execute the actual swap transaction
+      const result = await clientSwapperRef.current.executeSwapTransaction(swapParams);
+      
+      // Update swap history
+      const newSwap = {
+        id: Date.now(),
+        fromChain: chains.find(c => c.id.toString() === fromChain)?.name || fromChain,
+        toChain: chains.find(c => c.id.toString() === toChain)?.name || toChain,
+        fromToken,
+        toToken,
+        amount: fromAmount,
+        value: `$${(parseFloat(fromAmount) * 1).toFixed(2)}`,
+        status: 'completed',
+        txHash: result.swapTxHash,
+        timestamp: 'Just now'
+      };
+      
+      setSwapHistory(prev => [newSwap, ...prev.slice(0, 9)]);
+      
+      setTxHash(result.swapTxHash);
+      setShowConfirmModal(true);
+      
+      toast({
+        title: "✅ Swap Completed Successfully!",
+        description: `Transaction hash: ${result.swapTxHash.slice(0, 10)}...`,
+      });
+      
+      // Reset approval state
+      setIsApproved(false);
+      setSwapParams(null);
+      
+    } catch (error) {
+      console.error('Swap execution error:', error);
+      
+      // Check if it's a user rejection
+      if (error.message && error.message.includes('user rejected')) {
+        toast({
+          title: "Swap Cancelled",
+          description: "You cancelled the swap transaction in your wallet.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Swap Failed",
+          description: error.message || "Failed to execute swap. Please try again.",
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -274,7 +443,18 @@ const SwapInterface = () => {
     setToChain(tempChain);
     setFromToken(toToken);
     setToToken(tempToken);
+    // Reset approval state when tokens change
+    setIsApproved(false);
+    setSwapParams(null);
   };
+
+  // Reset approval state when amount changes
+  useEffect(() => {
+    if (fromAmount && isApproved) {
+      setIsApproved(false);
+      setSwapParams(null);
+    }
+  }, [fromAmount, isApproved]);
 
   const handleChainSwitch = (newChainId: string) => {
     if (switchChain) {
@@ -353,7 +533,7 @@ const SwapInterface = () => {
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    onClick={() => setQuoteLoading(true)}
+                    onClick={getQuote}
                     className="h-8 w-8 p-0 hover:bg-primary/20"
                   >
                     <RefreshCw className={`h-4 w-4 ${quoteLoading ? 'animate-spin' : ''}`} />
@@ -469,25 +649,61 @@ const SwapInterface = () => {
                       </div>
                     )}
                   </div>
+                  
+                  {/* Get Quote Button */}
+                  <Button
+                    onClick={getQuote}
+                    disabled={!isConnected || !fromAmount || quoteLoading}
+                    variant="outline"
+                    className="w-full mt-2"
+                  >
+                    {quoteLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Getting Quote...
+                      </>
+                    ) : (
+                      "Get Quote"
+                    )}
+                  </Button>
                 </div>
 
                 {/* Swap Button */}
-                <Button
-                  onClick={handleSwap}
-                  disabled={!isConnected || !fromAmount || !toAmount || isLoading}
-                  className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Processing Swap...
-                    </>
-                  ) : !isConnected ? (
-                    "Connect Wallet to Swap"
-                  ) : (
-                    `Swap ${fromToken} to ${toToken}`
-                  )}
-                </Button>
+                {!isApproved ? (
+                  <Button
+                    onClick={handleSwap}
+                    disabled={!isConnected || !fromAmount || !toAmount || isLoading}
+                    className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Approving Token...
+                      </>
+                    ) : !isConnected ? (
+                      "Connect Wallet to Swap"
+                    ) : !toAmount ? (
+                      "Get Quote First"
+                    ) : (
+                      `Approve ${fromToken} for Swap`
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleExecuteSwap}
+                    disabled={!isConnected || isLoading}
+                    className="w-full h-14 text-lg bg-green-600 hover:bg-green-700 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Executing Swap...
+                      </>
+                    ) : (
+                      `Execute Swap ${fromToken} → ${toToken}`
+                    )}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -552,16 +768,34 @@ const SwapInterface = () => {
       <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
         <DialogContent className="bg-gradient-card backdrop-blur-sm border-border/50 max-w-md">
           <DialogHeader>
-            <DialogTitle>Transaction Submitted</DialogTitle>
+            <DialogTitle>
+              {isApproved && !swapParams ? "Token Approval Completed" : "Swap Transaction Completed"}
+            </DialogTitle>
           </DialogHeader>
           <div className="py-6 text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-success/20 rounded-full flex items-center justify-center">
               <CheckCircle className="h-8 w-8 text-success" />
             </div>
-            <p className="text-lg mb-4">Your swap is being processed!</p>
+            {isApproved && !swapParams ? (
+              <>
+                <p className="text-lg mb-4">Token approval completed successfully!</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  You can now execute the cross-chain swap when ready.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg mb-4">Swap transaction completed successfully!</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Your tokens have been swapped across chains.
+                </p>
+              </>
+            )}
             <div className="bg-background/50 p-4 rounded-lg border border-border/50">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Transaction Hash:</span>
+                <span className="text-sm text-muted-foreground">
+                  {isApproved && !swapParams ? "Approval Hash:" : "Transaction Hash:"}
+                </span>
                 <div className="flex items-center space-x-2">
                   <span className="text-sm font-mono">{txHash}</span>
                   <Button
@@ -571,13 +805,6 @@ const SwapInterface = () => {
                     className="h-6 w-6 p-0"
                   >
                     <Copy className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0"
-                  >
-                    <ExternalLink className="h-3 w-3" />
                   </Button>
                 </div>
               </div>

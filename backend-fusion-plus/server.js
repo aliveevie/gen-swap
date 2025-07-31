@@ -16,8 +16,13 @@ app.use(express.json());
 // Initialize the swapper (for server-side operations)
 let swapper = null;
 try {
-  swapper = new CrossChainSwapper();
-  console.log('✅ CrossChainSwapper initialized successfully');
+  // Only initialize if we have the required environment variables
+  if (process.env.DEV_PORTAL_KEY) {
+    swapper = new CrossChainSwapper();
+    console.log('✅ CrossChainSwapper initialized successfully');
+  } else {
+    console.log('⚠️  No DEV_PORTAL_KEY found - using client-side execution only');
+  }
 } catch (error) {
   console.log('⚠️  CrossChainSwapper initialization failed (will use client-side execution):', error.message);
 }
@@ -223,8 +228,8 @@ app.post('/api/quote', async (req, res) => {
       walletAddress: walletAddress
     };
 
-    // Get quote from 1inch API
-    if (swapper) {
+    // Get quote from 1inch API (only for price estimation, not execution)
+    if (swapper && process.env.DEV_PORTAL_KEY) {
       try {
         await swapper.initializeSDK(fromNetwork);
         const quote = await swapper.sdk.getQuote(params);
@@ -243,8 +248,7 @@ app.post('/api/quote', async (req, res) => {
               fromToken,
               toToken,
               fromChainId,
-              toChainId,
-              quote: quote
+              toChainId
             }
           });
         } else {
@@ -252,9 +256,9 @@ app.post('/api/quote', async (req, res) => {
         }
       } catch (error) {
         console.error('Error getting quote from 1inch:', error);
-        // Fallback to mock quote
-        const mockRate = Math.random() * 2000 + 1000;
-        const estimatedOutput = (parseFloat(amount) * mockRate).toFixed(6);
+        // Fallback to realistic mock quote
+        const realisticRate = 0.98; // Realistic 1:1 rate with small slippage
+        const estimatedOutput = (parseFloat(amount) * realisticRate).toFixed(6);
         
         res.json({
           success: true,
@@ -270,9 +274,9 @@ app.post('/api/quote', async (req, res) => {
         });
       }
     } else {
-      // Mock quote when swapper is not available
-      const mockRate = Math.random() * 2000 + 1000;
-      const estimatedOutput = (parseFloat(amount) * mockRate).toFixed(6);
+      // Realistic mock quote when swapper is not available
+      const realisticRate = 0.98; // Realistic 1:1 rate with small slippage
+      const estimatedOutput = (parseFloat(amount) * realisticRate).toFixed(6);
       
       res.json({
         success: true,
@@ -297,7 +301,7 @@ app.post('/api/quote', async (req, res) => {
   }
 });
 
-// Execute swap (client-side execution with server-side parameters)
+// Generate swap parameters (client-side execution with user wallet approval)
 app.post('/api/swap', async (req, res) => {
   try {
     const { fromChainId, toChainId, fromToken, toToken, amount, walletAddress } = req.body;
@@ -320,7 +324,7 @@ app.post('/api/swap', async (req, res) => {
       });
     }
 
-    console.log(`🚀 Processing swap: ${amount} ${fromToken} on ${fromNetwork} to ${toToken} on ${toNetwork}`);
+    console.log(`📋 Generating swap parameters: ${amount} ${fromToken} on ${fromNetwork} to ${toToken} on ${toNetwork}`);
 
     // Convert amount to wei
     const tokenDecimals = {
@@ -341,7 +345,7 @@ app.post('/api/swap', async (req, res) => {
       });
     }
 
-    // Generate swap parameters for client-side execution
+    // Generate swap parameters for client-side execution with user wallet approval
     const swapParams = {
       fromChainId: parseInt(fromChainId),
       toChainId: parseInt(toChainId),
@@ -353,7 +357,9 @@ app.post('/api/swap', async (req, res) => {
       humanAmount: amount,
       walletAddress,
       fromNetwork,
-      toNetwork
+      toNetwork,
+      spenderAddress: '0x111111125421ca6dc452d289314280a0f8842a65', // 1inch spender
+      requiresApproval: true
     };
 
     // Generate order hash for tracking
@@ -368,17 +374,17 @@ app.post('/api/swap', async (req, res) => {
         toToken,
         fromChainId,
         toChainId,
-        status: 'pending',
+        status: 'pending_approval',
         swapParams: swapParams,
-        message: 'Swap parameters generated. Client should execute the swap with user wallet approval.'
+        message: 'Swap parameters generated. User must approve token spending in their wallet before swap execution.'
       }
     });
     
   } catch (error) {
-    console.error('Error processing swap:', error);
+    console.error('Error generating swap parameters:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to process swap'
+      error: error.message || 'Failed to generate swap parameters'
     });
   }
 });
