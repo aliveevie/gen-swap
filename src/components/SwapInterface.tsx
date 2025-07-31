@@ -197,9 +197,7 @@ const SwapInterface = () => {
     try {
       // Initialize client swapper if not already done
       if (!clientSwapperRef.current) {
-        // You'll need to get the API key from environment or config
-        const apiKey = import.meta.env.VITE_1INCH_API_KEY || 'your-api-key-here';
-        clientSwapperRef.current = new ClientSwapper(apiKey);
+        clientSwapperRef.current = new ClientSwapper();
         
         // Get wallet provider from window.ethereum
         const walletProvider = (window as any).ethereum;
@@ -210,29 +208,15 @@ const SwapInterface = () => {
         await clientSwapperRef.current.initialize(walletProvider);
       }
 
-      // Get swap parameters from server
-      const response = await fetch(`${API_BASE_URL}/swap-params`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fromChainId: parseInt(fromChain),
-          toChainId: parseInt(toChain),
-          fromToken,
-          toToken,
-          amount: fromAmount,
-          walletAddress: address
-        })
-      });
-      
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error);
-      }
-
-      // Execute swap with user's wallet
-      const result = await clientSwapperRef.current.executeSwap(data.data);
+      // Execute swap via server API
+      const result = await clientSwapperRef.current.executeSwap({
+        fromChainId: parseInt(fromChain),
+        toChainId: parseInt(toChain),
+        fromToken,
+        toToken,
+        amount: fromAmount,
+        walletAddress: address
+      }, API_BASE_URL);
       
       setTxHash(result.orderHash);
       setShowConfirmModal(true);

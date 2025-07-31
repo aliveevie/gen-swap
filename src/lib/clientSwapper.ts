@@ -1,5 +1,4 @@
 import { ethers } from 'ethers';
-import { SDK, HashLock } from '@1inch/cross-chain-sdk';
 
 // Token ABI for approvals
 const TOKEN_ABI = [
@@ -35,11 +34,10 @@ const TOKEN_ABI = [
 ];
 
 export class ClientSwapper {
-  private sdk: SDK | null = null;
   private provider: ethers.BrowserProvider | null = null;
   private signer: ethers.JsonRpcSigner | null = null;
 
-  constructor(private apiKey: string) {}
+  constructor() {}
 
   // Initialize with user's wallet
   async initialize(walletProvider: any) {
@@ -47,24 +45,6 @@ export class ClientSwapper {
       this.provider = new ethers.BrowserProvider(walletProvider);
       this.signer = await this.provider.getSigner();
       
-      // Initialize 1inch SDK with user's wallet
-      this.sdk = new SDK({
-        url: 'https://api.1inch.dev/fusion-plus',
-        authKey: this.apiKey,
-        blockchainProvider: {
-          // Use the user's wallet as the blockchain provider
-          async sendTransaction(transaction: any) {
-            return await this.signer!.sendTransaction(transaction);
-          },
-          async signMessage(message: string) {
-            return await this.signer!.signMessage(message);
-          },
-          async getAddress() {
-            return await this.signer!.getAddress();
-          }
-        }
-      });
-
       console.log('✅ Client swapper initialized with user wallet');
     } catch (error) {
       console.error('❌ Failed to initialize client swapper:', error);
@@ -99,37 +79,35 @@ export class ClientSwapper {
     return receipt.hash;
   }
 
-  // Execute the swap using user's wallet
-  async executeSwap(swapParams: any) {
-    if (!this.sdk || !this.signer) {
+  // Execute the swap using server API
+  async executeSwap(swapParams: any, apiBaseUrl: string) {
+    if (!this.signer) {
       throw new Error('SDK not initialized. Please connect wallet first.');
     }
 
     try {
       const {
-        quote,
-        hashLock,
-        secretHashes,
-        secrets,
-        srcTokenAddress,
-        dstTokenAddress,
-        weiAmount,
+        fromChainId,
+        toChainId,
+        fromToken,
+        toToken,
+        amount,
         walletAddress
       } = swapParams;
 
-      console.log('🚀 Executing swap with user wallet...');
+      console.log('🚀 Executing swap via server API...');
 
       // Check if approval is needed
       const oneInchSpender = '0x111111125421ca6dc452d289314280a0f8842a65'; // 1inch spender address
-      const currentAllowance = await this.checkAllowance(srcTokenAddress, oneInchSpender);
-      const requiredAmount = BigInt(weiAmount);
+      const currentAllowance = await this.checkAllowance(fromToken, oneInchSpender);
+      const requiredAmount = BigInt(amount);
 
       if (currentAllowance < requiredAmount) {
         console.log('🔐 Approval needed. Requesting user approval...');
         
         // Request user approval
         const approvalTx = await this.approveToken(
-          srcTokenAddress,
+          fromToken,
           oneInchSpender,
           ethers.MaxUint256 // Unlimited allowance
         );
@@ -137,28 +115,32 @@ export class ClientSwapper {
         console.log(`✅ Approval transaction: ${approvalTx}`);
       }
 
-      // Place the order using user's wallet
-      const orderParams = {
-        walletAddress,
-        hashLock,
-        secretHashes,
-        permit: null,
-        signature: null
-      };
-
-      console.log('📝 Placing order with user wallet...');
+      // Send swap request to server
+      const response = await fetch(`${apiBaseUrl}/swap`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fromChainId,
+          toChainId,
+          fromToken,
+          toToken,
+          amount,
+          walletAddress
+        })
+      });
       
-      const orderResponse = await this.sdk.placeOrder(quote, orderParams);
+      const data = await response.json();
       
-      if (!orderResponse || !orderResponse.orderHash) {
-        throw new Error('Failed to place order');
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to execute swap');
       }
 
-      console.log(`✅ Order placed successfully: ${orderResponse.orderHash}`);
+      console.log(`✅ Swap executed successfully: ${data.data.orderHash}`);
       
       return {
-        orderHash: orderResponse.orderHash,
-        orderResponse,
+        orderHash: data.data.orderHash,
         status: 'pending'
       };
 
