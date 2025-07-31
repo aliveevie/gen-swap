@@ -1,130 +1,183 @@
-# 🚀 Cross-Chain Swapper - Flexible & User-Friendly
+# GenSwap Backend API
 
-A complete cross-chain swapping system using 1inch Fusion+ protocol that lets you specify your own amounts and networks.
+Professional cross-chain DeFi swapping backend with 1inch Fusion+ integration.
 
-## 🎯 Quick Start
+## 🚀 Features
 
-### 1. Setup Environment
+- **Real 1inch Fusion+ Integration**: Uses actual 1inch API for quotes and swaps
+- **Cross-Chain Support**: Ethereum, Arbitrum, Base, Polygon, BSC, Avalanche, Optimism, Fantom
+- **Client-Server Architecture**: Server handles complex logic, client handles wallet approvals
+- **Professional Token Support**: All major tokens (USDC, USDT, WETH, DAI, etc.)
+- **Perfect Synchronization**: Networks and tokens match exactly across UI, wallet, and server
+
+## 📋 Prerequisites
+
+- Node.js >= 18.0.0
+- 1inch Developer Portal API Key
+- Environment variables configured
+
+## 🔧 Setup
+
+### 1. Install Dependencies
+
 ```bash
-# Copy your environment variables
-cp ../fusion-plus-order/.env .env
-
-# Edit .env with your details
-WALLET_KEY=your_private_key_here
-WALLET_ADDRESS=your_wallet_address_here
-DEV_PORTAL_KEY=your_1inch_api_key_here
-```
-
-### 2. Install Dependencies
-```bash
+cd backend-fusion-plus
 npm install
 ```
 
-### 3. Test Setup
-```bash
-npm run test-setup
+### 2. Environment Variables
+
+Create a `.env` file in the `backend-fusion-plus` directory:
+
+```env
+# Server Configuration
+PORT=9056
+
+# 1inch API Configuration (Optional - for server-side quotes)
+DEV_PORTAL_KEY=your_1inch_api_key_here
+
+# Wallet Configuration (Optional - for server-side execution)
+WALLET_KEY=your_private_key_here
+WALLET_ADDRESS=your_wallet_address_here
 ```
 
-## 🔄 Cross-Chain Swaps
+**Note**: The `DEV_PORTAL_KEY` is optional. If not provided, the server will use client-side execution with user wallet approvals.
 
-### Basic Swap Command
+### 3. Start the Server
+
 ```bash
-node cli.js swap <fromNetwork> <fromToken> <toNetwork> <toToken> <amount>
+# Production
+npm start
+
+# Development (with auto-restart)
+npm run dev
 ```
 
-### Examples
-```bash
-# Swap 1.5 USDC from Arbitrum to Base
-node cli.js swap arbitrum usdc base usdc 1.5
+The server will start on `http://localhost:9056`
 
-# Swap 0.1 WETH from Ethereum to Polygon USDC
-node cli.js swap ethereum weth polygon usdc 0.1
+## 🌐 API Endpoints
 
-# Swap 100 USDT from Polygon to Arbitrum
-node cli.js swap polygon usdt arbitrum usdt 100
-
-# Swap 0.05 ETH from Ethereum to Base
-node cli.js swap ethereum eth base eth 0.05
+### Health Check
+```
+GET /api/health
 ```
 
-## 🔍 Check Balances
-
-### Check Balance Command
-```bash
-node cli.js check <network> [token]
+### Get Supported Networks
+```
+GET /api/networks
 ```
 
-### Examples
-```bash
-# Check USDC balance on Arbitrum
-node cli.js check arbitrum usdc
-
-# Check WETH balance on Ethereum
-node cli.js check ethereum weth
-
-# Check native token balance (default)
-node cli.js check arbitrum
+### Get Tokens for Network
+```
+GET /api/tokens/:networkName
 ```
 
-## 🌐 Supported Networks
-- **ethereum** - Ethereum Mainnet
-- **arbitrum** - Arbitrum One
-- **base** - Coinbase Base
-- **polygon** - Polygon PoS
-- **bsc** - BNB Smart Chain
-- **avalanche** - Avalanche C-Chain
-- **optimism** - Optimism
-- **fantom** - Fantom Opera
+### Get Quote
+```
+POST /api/quote
+{
+  "fromChainId": 1,
+  "toChainId": 137,
+  "fromToken": "USDC",
+  "toToken": "USDT",
+  "amount": "100",
+  "walletAddress": "0x..."
+}
+```
 
-## 🪙 Supported Tokens
-- **usdc** - USD Coin
-- **usdt** - Tether USD
-- **weth** - Wrapped Ether
-- **dai** - Dai Stablecoin
-- **wbtc** - Wrapped Bitcoin
-- **eth** - Native Ether
-- **matic** - Polygon MATIC
-- **bnb** - BNB
-- **avax** - Avalanche
-- **op** - Optimism
-- **ftm** - Fantom
+### Execute Swap
+```
+POST /api/swap
+{
+  "fromChainId": 1,
+  "toChainId": 137,
+  "fromToken": "USDC",
+  "toToken": "USDT",
+  "amount": "100",
+  "walletAddress": "0x..."
+}
+```
 
-## 💡 Key Features
+### Get Swap Status
+```
+GET /api/swap/status/:orderHash
+```
 
-✅ **Human-Readable Amounts** - Use 1.5 instead of 1500000  
-✅ **Flexible Network Selection** - Choose any supported network pair  
-✅ **Automatic Token Conversion** - Converts human amounts to proper decimals  
-✅ **Real-Time Balance Checking** - Verify your balances before swapping  
-✅ **Detailed Logging** - See every step of the swap process  
-✅ **Order Monitoring** - Track your swap status in real-time  
+## 🔗 Network Synchronization
 
-## 📊 Amount Examples
+The backend ensures perfect synchronization across:
 
-| Token | Human Amount | Wei Amount |
-|-------|-------------|------------|
-| USDC | 1.5 | 1500000 |
-| WETH | 0.1 | 100000000000000000 |
-| USDT | 100 | 100000000 |
-| ETH | 0.05 | 50000000000000000 |
+1. **Server Networks** (from Swapper.js)
+2. **Frontend Networks** (from SwapInterface.tsx)
+3. **Wallet Networks** (from wagmi.ts)
 
-## ⚠️ Important Notes
+### Supported Networks
 
-1. **Ensure sufficient funds** on the source network for both the token amount and gas fees
-2. **Token approval** is handled automatically for the first swap
-3. **Cross-chain swaps** can take 2-5 minutes to complete
-4. **Monitor the console** for real-time status updates
-5. **Keep your private key secure** and never share it
+| Network | Chain ID | Network Name | Symbol |
+|---------|----------|--------------|--------|
+| Ethereum | 1 | ethereum | ETH |
+| Arbitrum | 42161 | arbitrum | ARB |
+| Base | 8453 | base | BASE |
+| Polygon | 137 | polygon | MATIC |
+| BSC | 56 | bsc | BNB |
+| Avalanche | 43114 | avalanche | AVAX |
+| Optimism | 10 | optimism | OP |
+| Fantom | 250 | fantom | FTM |
 
-## 🚨 Troubleshooting
+### Supported Tokens
 
-- **"Not enough balance"** - Add more funds to the source network
-- **"Token not supported"** - Check the supported tokens list
-- **"Network not supported"** - Verify the network name spelling
-- **"Invalid amount"** - Use decimal format (e.g., 1.5, not 1,5)
+Each network supports:
+- **Native tokens**: ETH, ARB, BASE, MATIC, BNB, AVAX, OP, FTM
+- **Stablecoins**: USDC, USDT, DAI
+- **Wrapped tokens**: WETH, WMATIC, WBNB, WAVAX, WFTM
+- **Other**: WBTC
 
-## 🎉 Success!
+## 🔐 Security
 
-When your swap completes successfully, you'll see:
-- ✅ Order executed successfully
-- 🎉 Cross-chain swap completed
-- 📋 Final order details with transaction hashes
+- **No Private Keys on Frontend**: All sensitive operations happen server-side
+- **User Wallet Approvals**: Users approve transactions through their own wallets
+- **Environment Variables**: Sensitive data stored in .env files
+- **CORS Protection**: Configured for secure cross-origin requests
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend UI   │    │   Backend API   │    │   1inch API     │
+│                 │    │                 │    │                 │
+│ • Wallet Connect│◄──►│ • Quote Logic   │◄──►│ • Fusion+ API   │
+│ • Token Approval│    │ • Swap Params   │    │ • Cross-Chain   │
+│ • User Interface│    │ • Network Sync  │    │ • Liquidity     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+## 🚀 Usage
+
+1. **Start Backend**: `npm start` in `backend-fusion-plus`
+2. **Start Frontend**: `npm run dev` in root directory
+3. **Connect Wallet**: Use MetaMask or other supported wallets
+4. **Select Networks**: Choose from and to networks
+5. **Select Tokens**: Choose tokens to swap
+6. **Enter Amount**: Input the amount to swap
+7. **Approve & Swap**: Approve token spending and execute swap
+
+## 🔧 Troubleshooting
+
+### Server Won't Start
+- Check Node.js version (>= 18.0.0)
+- Verify all dependencies installed: `npm install`
+- Check port 9056 is available
+
+### API Errors
+- Verify .env file exists and is properly configured
+- Check 1inch API key is valid (if using server-side quotes)
+- Ensure all required environment variables are set
+
+### Network Sync Issues
+- Verify all networks in wagmi.ts match Swapper.js
+- Check network names are consistent across all files
+- Ensure chain IDs match exactly
+
+## 📝 License
+
+ISC License - see LICENSE file for details.

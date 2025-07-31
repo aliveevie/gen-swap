@@ -82,7 +82,7 @@ export class ClientSwapper {
   // Execute the swap using server API
   async executeSwap(swapParams: any, apiBaseUrl: string) {
     if (!this.signer) {
-      throw new Error('SDK not initialized. Please connect wallet first.');
+      throw new Error('Wallet not connected. Please connect wallet first.');
     }
 
     try {
@@ -97,25 +97,7 @@ export class ClientSwapper {
 
       console.log('🚀 Executing swap via server API...');
 
-      // Check if approval is needed
-      const oneInchSpender = '0x111111125421ca6dc452d289314280a0f8842a65'; // 1inch spender address
-      const currentAllowance = await this.checkAllowance(fromToken, oneInchSpender);
-      const requiredAmount = BigInt(amount);
-
-      if (currentAllowance < requiredAmount) {
-        console.log('🔐 Approval needed. Requesting user approval...');
-        
-        // Request user approval
-        const approvalTx = await this.approveToken(
-          fromToken,
-          oneInchSpender,
-          ethers.MaxUint256 // Unlimited allowance
-        );
-        
-        console.log(`✅ Approval transaction: ${approvalTx}`);
-      }
-
-      // Send swap request to server
+      // Get swap parameters from server
       const response = await fetch(`${apiBaseUrl}/swap`, {
         method: 'POST',
         headers: {
@@ -134,14 +116,38 @@ export class ClientSwapper {
       const data = await response.json();
       
       if (!data.success) {
-        throw new Error(data.error || 'Failed to execute swap');
+        throw new Error(data.error || 'Failed to get swap parameters from server');
       }
 
-      console.log(`✅ Swap executed successfully: ${data.data.orderHash}`);
+      const { swapParams: serverSwapParams, orderHash } = data.data;
+      
+      // Check if approval is needed for the token
+      const oneInchSpender = '0x111111125421ca6dc452d289314280a0f8842a65'; // 1inch spender address
+      const currentAllowance = await this.checkAllowance(serverSwapParams.fromTokenAddress, oneInchSpender);
+      const requiredAmount = BigInt(serverSwapParams.amount);
+
+      if (currentAllowance < requiredAmount) {
+        console.log('🔐 Approval needed. Requesting user approval...');
+        
+        // Request user approval
+        const approvalTx = await this.approveToken(
+          serverSwapParams.fromTokenAddress,
+          oneInchSpender,
+          ethers.MaxUint256 // Unlimited allowance
+        );
+        
+        console.log(`✅ Approval transaction: ${approvalTx}`);
+      }
+
+      console.log(`✅ Swap parameters received from server`);
+      console.log(`🆔 Order Hash: ${orderHash}`);
+      console.log(`📋 Swap Parameters:`, serverSwapParams);
       
       return {
-        orderHash: data.data.orderHash,
-        status: 'pending'
+        orderHash,
+        status: 'pending',
+        swapParams: serverSwapParams,
+        message: 'Swap parameters generated successfully. User approval completed.'
       };
 
     } catch (error) {

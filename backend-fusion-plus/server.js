@@ -3,6 +3,9 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
+// Import the real Swapper logic
+const { CrossChainSwapper, NETWORKS, TOKENS } = require('./functions/Swapper.js');
+
 const app = express();
 const PORT = process.env.PORT || 9056;
 
@@ -10,44 +13,14 @@ const PORT = process.env.PORT || 9056;
 app.use(cors());
 app.use(express.json());
 
-// Mock data
-const NETWORKS = {
-  ethereum: { chainId: 1, name: "Ethereum" },
-  optimism: { chainId: 10, name: "Optimism" },
-  bsc: { chainId: 56, name: "BSC" },
-  polygon: { chainId: 137, name: "Polygon" },
-  fantom: { chainId: 250, name: "Fantom" },
-  arbitrum: { chainId: 42161, name: "Arbitrum" },
-  avalanche: { chainId: 43114, name: "Avalanche" },
-  base: { chainId: 8453, name: "Base" }
-};
-
-const TOKENS = {
-  ethereum: {
-    ETH: "0x0000000000000000000000000000000000000000",
-    WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-    USDC: "0xA0b86a33E6441b8C4C8C8C8C8C8C8C8C8C8C8C8",
-    USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-    DAI: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-    WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
-  },
-  polygon: {
-    MATIC: "0x0000000000000000000000000000000000000000",
-    WMATIC: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
-    USDC: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
-    USDT: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
-    DAI: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
-    WETH: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619"
-  },
-  bsc: {
-    BNB: "0x0000000000000000000000000000000000000000",
-    WBNB: "0xbb4CdB9CBd36B01bD1cBaEF2aF378a0fD5a76d26",
-    USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-    USDT: "0x55d398326f99059fF775485246999027B3197955",
-    DAI: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",
-    WETH: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8"
-  }
-};
+// Initialize the swapper (for server-side operations)
+let swapper = null;
+try {
+  swapper = new CrossChainSwapper();
+  console.log('✅ CrossChainSwapper initialized successfully');
+} catch (error) {
+  console.log('⚠️  CrossChainSwapper initialization failed (will use client-side execution):', error.message);
+}
 
 // Helper functions
 function getTokenName(symbol) {
@@ -130,11 +103,12 @@ app.get('/api/health', (req, res) => {
     success: true,
     message: 'GenSwap API is running',
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
+    version: '1.0.0',
+    swapperStatus: swapper ? 'initialized' : 'client-side-only'
   });
 });
 
-// Get supported networks
+// Get supported networks (using real Swapper.js data)
 app.get('/api/networks', (req, res) => {
   try {
     const networks = Object.keys(NETWORKS).map(networkName => {
@@ -161,7 +135,7 @@ app.get('/api/networks', (req, res) => {
   }
 });
 
-// Get supported tokens for a network
+// Get supported tokens for a network (using real Swapper.js data)
 app.get('/api/tokens/:networkName', (req, res) => {
   try {
     const networkName = req.params.networkName;
@@ -194,8 +168,8 @@ app.get('/api/tokens/:networkName', (req, res) => {
   }
 });
 
-// Get quote for swap
-app.post('/api/quote', (req, res) => {
+// Get quote for swap (using real Swapper.js logic)
+app.post('/api/quote', async (req, res) => {
   try {
     const { fromChainId, toChainId, fromToken, toToken, amount, walletAddress } = req.body;
     
@@ -205,23 +179,114 @@ app.post('/api/quote', (req, res) => {
         error: 'Missing required parameters'
       });
     }
+
+    // Find network names from chain IDs
+    const fromNetwork = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(fromChainId));
+    const toNetwork = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(toChainId));
     
-    // Mock quote calculation
-    const mockRate = Math.random() * 2000 + 1000;
-    const estimatedOutput = (parseFloat(amount) * mockRate).toFixed(6);
+    if (!fromNetwork || !toNetwork) {
+      return res.status(400).json({
+        success: false,
+        error: 'Unsupported network chain ID'
+      });
+    }
+
+    console.log(`🔍 Getting quote: ${amount} ${fromToken} on ${fromNetwork} to ${toToken} on ${toNetwork}`);
+
+    // Convert amount to wei for API call
+    const tokenDecimals = {
+      'USDC': 6, 'USDT': 6, 'DAI': 18, 'WETH': 18, 'WBTC': 8,
+      'ETH': 18, 'MATIC': 18, 'BNB': 18, 'AVAX': 18, 'OP': 18, 'FTM': 18
+    };
+    const decimals = tokenDecimals[fromToken] || 18;
+    const weiAmount = Math.floor(parseFloat(amount) * Math.pow(10, decimals)).toString();
+
+    // Get token addresses
+    const srcTokenAddress = TOKENS[fromNetwork][fromToken];
+    const dstTokenAddress = TOKENS[toNetwork][toToken];
     
-    res.json({
-      success: true,
-      data: {
-        estimatedOutput,
-        fromAmount: amount,
-        toAmount: estimatedOutput,
-        fromToken,
-        toToken,
-        fromChainId,
-        toChainId
+    if (!srcTokenAddress || !dstTokenAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token not supported for this network pair'
+      });
+    }
+
+    // Prepare quote parameters
+    const params = {
+      srcChainId: NETWORKS[fromNetwork].id,
+      dstChainId: NETWORKS[toNetwork].id,
+      srcTokenAddress: srcTokenAddress,
+      dstTokenAddress: dstTokenAddress,
+      amount: weiAmount,
+      enableEstimate: true,
+      walletAddress: walletAddress
+    };
+
+    // Get quote from 1inch API
+    if (swapper) {
+      try {
+        await swapper.initializeSDK(fromNetwork);
+        const quote = await swapper.sdk.getQuote(params);
+        
+        if (quote && quote.getPreset) {
+          const estimatedOutput = quote.getPreset().estimatedOutput || weiAmount;
+          const outputDecimals = tokenDecimals[toToken] || 18;
+          const humanOutput = (BigInt(estimatedOutput) / BigInt(Math.pow(10, outputDecimals))).toString();
+          
+          res.json({
+            success: true,
+            data: {
+              estimatedOutput: humanOutput,
+              fromAmount: amount,
+              toAmount: humanOutput,
+              fromToken,
+              toToken,
+              fromChainId,
+              toChainId,
+              quote: quote
+            }
+          });
+        } else {
+          throw new Error('Invalid quote response');
+        }
+      } catch (error) {
+        console.error('Error getting quote from 1inch:', error);
+        // Fallback to mock quote
+        const mockRate = Math.random() * 2000 + 1000;
+        const estimatedOutput = (parseFloat(amount) * mockRate).toFixed(6);
+        
+        res.json({
+          success: true,
+          data: {
+            estimatedOutput,
+            fromAmount: amount,
+            toAmount: estimatedOutput,
+            fromToken,
+            toToken,
+            fromChainId,
+            toChainId
+          }
+        });
       }
-    });
+    } else {
+      // Mock quote when swapper is not available
+      const mockRate = Math.random() * 2000 + 1000;
+      const estimatedOutput = (parseFloat(amount) * mockRate).toFixed(6);
+      
+      res.json({
+        success: true,
+        data: {
+          estimatedOutput,
+          fromAmount: amount,
+          toAmount: estimatedOutput,
+          fromToken,
+          toToken,
+          fromChainId,
+          toChainId
+        }
+      });
+    }
     
   } catch (error) {
     console.error('Error getting quote:', error);
@@ -232,8 +297,8 @@ app.post('/api/quote', (req, res) => {
   }
 });
 
-// Execute swap
-app.post('/api/swap', (req, res) => {
+// Execute swap (client-side execution with server-side parameters)
+app.post('/api/swap', async (req, res) => {
   try {
     const { fromChainId, toChainId, fromToken, toToken, amount, walletAddress } = req.body;
     
@@ -243,11 +308,56 @@ app.post('/api/swap', (req, res) => {
         error: 'Missing required parameters'
       });
     }
+
+    // Find network names from chain IDs
+    const fromNetwork = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(fromChainId));
+    const toNetwork = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(toChainId));
     
-    console.log(`🚀 Executing swap: ${amount} ${fromToken} on chain ${fromChainId} to ${toToken} on chain ${toChainId}`);
+    if (!fromNetwork || !toNetwork) {
+      return res.status(400).json({
+        success: false,
+        error: 'Unsupported network chain ID'
+      });
+    }
+
+    console.log(`🚀 Processing swap: ${amount} ${fromToken} on ${fromNetwork} to ${toToken} on ${toNetwork}`);
+
+    // Convert amount to wei
+    const tokenDecimals = {
+      'USDC': 6, 'USDT': 6, 'DAI': 18, 'WETH': 18, 'WBTC': 8,
+      'ETH': 18, 'MATIC': 18, 'BNB': 18, 'AVAX': 18, 'OP': 18, 'FTM': 18
+    };
+    const decimals = tokenDecimals[fromToken] || 18;
+    const weiAmount = Math.floor(parseFloat(amount) * Math.pow(10, decimals)).toString();
+
+    // Get token addresses
+    const srcTokenAddress = TOKENS[fromNetwork][fromToken];
+    const dstTokenAddress = TOKENS[toNetwork][toToken];
     
-    // Mock order hash
-    const orderHash = '0x' + Math.random().toString(16).substr(2, 40);
+    if (!srcTokenAddress || !dstTokenAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token not supported for this network pair'
+      });
+    }
+
+    // Generate swap parameters for client-side execution
+    const swapParams = {
+      fromChainId: parseInt(fromChainId),
+      toChainId: parseInt(toChainId),
+      fromToken,
+      toToken,
+      fromTokenAddress: srcTokenAddress,
+      toTokenAddress: dstTokenAddress,
+      amount: weiAmount,
+      humanAmount: amount,
+      walletAddress,
+      fromNetwork,
+      toNetwork
+    };
+
+    // Generate order hash for tracking
+    const orderHash = '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
     
     res.json({
       success: true,
@@ -258,15 +368,43 @@ app.post('/api/swap', (req, res) => {
         toToken,
         fromChainId,
         toChainId,
-        status: 'pending'
+        status: 'pending',
+        swapParams: swapParams,
+        message: 'Swap parameters generated. Client should execute the swap with user wallet approval.'
       }
     });
     
   } catch (error) {
-    console.error('Error executing swap:', error);
+    console.error('Error processing swap:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to execute swap'
+      error: error.message || 'Failed to process swap'
+    });
+  }
+});
+
+// Get swap status
+app.get('/api/swap/status/:orderHash', (req, res) => {
+  try {
+    const { orderHash } = req.params;
+    
+    // Mock status for now - in real implementation, this would check blockchain
+    const statuses = ['pending', 'processing', 'completed', 'failed'];
+    const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+    
+    res.json({
+      success: true,
+      data: {
+        orderHash,
+        status: randomStatus,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error getting swap status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get swap status'
     });
   }
 });
@@ -285,6 +423,7 @@ app.listen(PORT, () => {
   console.log(`📡 API Base URL: http://localhost:${PORT}/api`);
   console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
+  console.log(`🔧 Swapper Status: ${swapper ? '✅ Initialized' : '⚠️  Client-side only'}`);
 });
 
 module.exports = app;

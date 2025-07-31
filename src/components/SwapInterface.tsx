@@ -108,27 +108,40 @@ const SwapInterface = () => {
     loadNetworks();
   }, [toast]);
 
+  // Helper function to get network name from chain ID
+  const getNetworkNameFromChainId = (chainId: number): string => {
+    const networkMap: { [key: number]: string } = {
+      1: 'ethereum',
+      10: 'optimism',
+      56: 'bsc',
+      137: 'polygon',
+      250: 'fantom',
+      42161: 'arbitrum',
+      43114: 'avalanche',
+      8453: 'base'
+    };
+    return networkMap[chainId] || 'ethereum';
+  };
+
   // Load tokens for selected chains
   useEffect(() => {
     const loadTokens = async () => {
       try {
-        const fromNetwork = chains.find(chain => chain.id.toString() === fromChain);
-        const toNetwork = chains.find(chain => chain.id.toString() === toChain);
+        const fromNetworkName = getNetworkNameFromChainId(parseInt(fromChain));
+        const toNetworkName = getNetworkNameFromChainId(parseInt(toChain));
         
-        if (fromNetwork) {
-          const response = await fetch(`${API_BASE_URL}/tokens/${fromNetwork.networkName}`);
-          const data = await response.json();
-          if (data.success) {
-            setFromTokens(data.data);
-          }
+        // Load from tokens
+        const fromResponse = await fetch(`${API_BASE_URL}/tokens/${fromNetworkName}`);
+        const fromData = await fromResponse.json();
+        if (fromData.success) {
+          setFromTokens(fromData.data);
         }
         
-        if (toNetwork) {
-          const response = await fetch(`${API_BASE_URL}/tokens/${toNetwork.networkName}`);
-          const data = await response.json();
-          if (data.success) {
-            setToTokens(data.data);
-          }
+        // Load to tokens
+        const toResponse = await fetch(`${API_BASE_URL}/tokens/${toNetworkName}`);
+        const toData = await toResponse.json();
+        if (toData.success) {
+          setToTokens(toData.data);
         }
       } catch (error) {
         console.error('Failed to load tokens:', error);
