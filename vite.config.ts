@@ -17,6 +17,21 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Node.js polyfills for 1inch SDK
+      "assert": "assert",
+      "buffer": "buffer", 
+      "crypto": "crypto-browserify",
+      "stream": "stream-browserify",
+      "util": "util"
     },
   },
+  define: {
+    global: 'globalThis',
+    process: {
+      env: {}
+    }
+  },
+  optimizeDeps: {
+    include: ['@1inch/cross-chain-sdk', 'assert', 'buffer', 'crypto-browserify', 'stream-browserify', 'util']
+  }
 }));
