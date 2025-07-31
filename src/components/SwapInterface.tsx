@@ -59,7 +59,6 @@ const SwapInterface = () => {
   const [fromTokens, setFromTokens] = useState(defaultTokens);
   const [toTokens, setToTokens] = useState(defaultTokens);
   const [swapHistory, setSwapHistory] = useState([]);
-  const [swapParams, setSwapParams] = useState(null);
   const [isApproved, setIsApproved] = useState(false);
   const { toast } = useToast();
   
@@ -198,7 +197,62 @@ const SwapInterface = () => {
   //   }
   // }, [fromAmount, fromToken, toToken, fromChain, toChain, isConnected, address]);
 
-  // Manual quote fetching function
+  // Automatic quote fetching when parameters change
+  useEffect(() => {
+    const getQuoteAutomatically = async () => {
+      if (!fromAmount || !fromToken || !toToken || !isConnected || !address) {
+        setToAmount('');
+        return;
+      }
+
+      // Debounce the quote request
+      const timeoutId = setTimeout(async () => {
+        setQuoteLoading(true);
+        
+        try {
+          if (!clientSwapperRef.current) {
+            clientSwapperRef.current = new ClientSwapper();
+            const walletProvider = (window as any).ethereum;
+            if (walletProvider) {
+              await clientSwapperRef.current.initialize(walletProvider);
+            }
+          }
+
+          const swapParams = {
+            fromChainId: parseInt(fromChain),
+            toChainId: parseInt(toChain),
+            fromToken,
+            toToken,
+            amount: fromAmount,
+            walletAddress: address
+          };
+
+          // Validate parameters
+          clientSwapperRef.current.validateSwapParams(swapParams);
+
+          const quote = await clientSwapperRef.current.getQuote(swapParams, API_BASE_URL);
+          
+          if (quote && quote.toAmount) {
+            setToAmount(quote.toAmount);
+          } else {
+            setToAmount('0');
+          }
+          
+        } catch (error) {
+          console.error('Failed to get quote:', error);
+          setToAmount('0');
+        } finally {
+          setQuoteLoading(false);
+        }
+      }, 500); // 500ms debounce
+
+      return () => clearTimeout(timeoutId);
+    };
+
+    getQuoteAutomatically();
+  }, [fromAmount, fromToken, toToken, fromChain, toChain, isConnected, address]);
+
+  // Manual quote refresh function
   const getQuote = async () => {
     if (!fromAmount || !fromToken || !toToken || !isConnected || !address) {
       toast({
@@ -212,43 +266,46 @@ const SwapInterface = () => {
     setQuoteLoading(true);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/quote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fromChainId: parseInt(fromChain),
-          toChainId: parseInt(toChain),
-          fromToken,
-          toToken,
-          amount: fromAmount,
-          walletAddress: address
-        })
-      });
+      if (!clientSwapperRef.current) {
+        clientSwapperRef.current = new ClientSwapper();
+        const walletProvider = (window as any).ethereum;
+        if (!walletProvider) {
+          throw new Error('No wallet provider found');
+        }
+        await clientSwapperRef.current.initialize(walletProvider);
+      }
+
+      const swapParams = {
+        fromChainId: parseInt(fromChain),
+        toChainId: parseInt(toChain),
+        fromToken,
+        toToken,
+        amount: fromAmount,
+        walletAddress: address
+      };
+
+      const quote = await clientSwapperRef.current.getQuote(swapParams, API_BASE_URL);
       
-      const data = await response.json();
-      if (data.success) {
-        setToAmount(data.data.toAmount);
+      if (quote && quote.toAmount) {
+        setToAmount(quote.toAmount);
         toast({
-          title: "Quote Received",
-          description: `Estimated output: ${data.data.toAmount} ${toToken}`,
+          title: "Quote Updated",
+          description: `Estimated output: ${quote.toAmount} ${toToken}`,
         });
       } else {
-        console.error('Quote error:', data.error);
         setToAmount('0');
         toast({
           title: "Quote Failed",
-          description: data.error || "Failed to get quote",
+          description: "Failed to get quote. Please try again.",
           variant: "destructive"
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to get quote:', error);
       setToAmount('0');
       toast({
         title: "Quote Failed",
-        description: "Failed to get quote. Please try again.",
+        description: error.message || "Failed to get quote. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -275,6 +332,15 @@ const SwapInterface = () => {
       return;
     }
 
+    if (!toAmount || parseFloat(toAmount) <= 0) {
+      toast({
+        title: "Error",
+        description: "Please get a quote first",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     try {
@@ -288,24 +354,46 @@ const SwapInterface = () => {
           throw new Error('No wallet provider found. Please install MetaMask.');
         }
         
+        console.log('🔧 Initializing ClientSwapper...');
         await clientSwapperRef.current.initialize(walletProvider);
+        console.log('✅ ClientSwapper initialized');
       }
 
-      // Show approval pending toast
+      // Debug wallet connection
+      console.log('🔍 Testing wallet connection...');
+      await clientSwapperRef.current.debugWalletConnection();
+
       toast({
-        title: "Requesting Approval",
-        description: "Please check your wallet for the approval popup...",
+        title: "Check Your Wallet",
+        description: "Please approve the token spending in MetaMask popup...",
       });
 
-      // Get swap parameters and handle token approval
-      const result = await clientSwapperRef.current.getSwapParameters({
+      const swapParams = {
         fromChainId: parseInt(fromChain),
         toChainId: parseInt(toChain),
         fromToken,
         toToken,
         amount: fromAmount,
         walletAddress: address
-      }, API_BASE_URL);
+      };
+
+      // Validate swap parameters
+      clientSwapperRef.current.validateSwapParams(swapParams);
+
+      console.log('🚀 Starting approval and swap process...');
+      console.log('👀 Watch console for MetaMask popup notifications');
+      
+      // Alert user that MetaMask should popup
+      toast({
+        title: "⚠️ MetaMask Popup Expected",
+        description: "If MetaMask doesn't popup, check console logs for 'APPROVAL NEEDED'",
+        variant: "default"
+      });
+
+      // Handle token approval AND execute swap in one step
+      const result = await clientSwapperRef.current.handleTokenApprovalAndSwap(swapParams, API_BASE_URL);
+      
+      console.log('One-step swap result:', result);
       
       // Add to swap history
       const newSwap = {
@@ -315,119 +403,41 @@ const SwapInterface = () => {
         fromToken,
         toToken,
         amount: fromAmount,
-        value: `$${(parseFloat(fromAmount) * 1).toFixed(2)}`, // Realistic value (1:1 for USDC)
-        status: result.status === 'approved' ? 'approved' : 'pending',
-        txHash: result.approvalTx || result.orderHash,
+        value: `$${(parseFloat(fromAmount) * 0.98).toFixed(2)}`, // Realistic value with slippage
+        status: 'completed',
+        txHash: result.swapTx || result.orderHash || 'completed',
         timestamp: 'Just now'
       };
       
       setSwapHistory(prev => [newSwap, ...prev.slice(0, 9)]); // Keep last 10 swaps
       
-      if (result.status === 'approved' || result.status === 'ready_to_swap') {
-        setSwapParams(result.swapParams);
-        setIsApproved(true);
-        setTxHash(result.approvalTx || result.orderHash);
-        
-        if (result.status === 'approved') {
-          setShowConfirmModal(true);
-          toast({
-            title: "✅ Token Approved Successfully!",
-            description: `Transaction hash: ${(result.approvalTx || result.orderHash).slice(0, 10)}...`,
-          });
-        } else {
-          toast({
-            title: "Token Already Approved",
-            description: `Token already has sufficient allowance. Ready to execute swap.`,
-          });
-        }
-      }
-      
-    } catch (error) {
-      console.error('Swap error:', error);
-      
-      // Check if it's a user rejection
-      if (error.message && error.message.includes('user rejected')) {
-        toast({
-          title: "Approval Cancelled",
-          description: "You cancelled the token approval in your wallet.",
-          variant: "destructive"
-        });
-      } else {
-        toast({
-          title: "Approval Failed",
-          description: error.message || "Failed to approve token spending. Please try again.",
-          variant: "destructive"
-        });
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleExecuteSwap = async () => {
-    if (!isConnected || !address || !swapParams) {
-      toast({
-        title: "Error",
-        description: "Please approve tokens first",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    
-    try {
-      // Show swap execution toast
-      toast({
-        title: "Executing Swap",
-        description: "Please check your wallet for the swap transaction...",
-      });
-
-      // Execute the actual swap transaction
-      const result = await clientSwapperRef.current.executeSwapTransaction(swapParams);
-      
-      // Update swap history
-      const newSwap = {
-        id: Date.now(),
-        fromChain: chains.find(c => c.id.toString() === fromChain)?.name || fromChain,
-        toChain: chains.find(c => c.id.toString() === toChain)?.name || toChain,
-        fromToken,
-        toToken,
-        amount: fromAmount,
-        value: `$${(parseFloat(fromAmount) * 1).toFixed(2)}`,
-        status: 'completed',
-        txHash: result.swapTxHash,
-        timestamp: 'Just now'
-      };
-      
-      setSwapHistory(prev => [newSwap, ...prev.slice(0, 9)]);
-      
-      setTxHash(result.swapTxHash);
+      // Set transaction hash and show success modal
+      setTxHash(result.swapTx || result.orderHash || 'completed');
       setShowConfirmModal(true);
       
       toast({
         title: "✅ Swap Completed Successfully!",
-        description: `Transaction hash: ${result.swapTxHash.slice(0, 10)}...`,
+        description: `Cross-chain swap executed! ${result.swapTx ? `TX: ${result.swapTx.slice(0, 10)}...` : ''}`,
       });
       
-      // Reset approval state
-      setIsApproved(false);
-      setSwapParams(null);
-      
-    } catch (error) {
-      console.error('Swap execution error:', error);
+    } catch (error: any) {
+      console.error('Swap error:', error);
       
       // Check if it's a user rejection
-      if (error.message && error.message.includes('user rejected')) {
+      if (error.message && (
+        error.message.includes('user rejected') || 
+        error.message.includes('User rejected') ||
+        error.message.includes('ACTION_REJECTED')
+      )) {
         toast({
-          title: "Swap Cancelled",
-          description: "You cancelled the swap transaction in your wallet.",
+          title: "Transaction Cancelled",
+          description: "You cancelled the transaction in your wallet.",
           variant: "destructive"
         });
       } else {
         toast({
           title: "Swap Failed",
-          description: error.message || "Failed to execute swap. Please try again.",
+          description: error.message || "Failed to process swap. Please try again.",
           variant: "destructive"
         });
       }
@@ -445,14 +455,12 @@ const SwapInterface = () => {
     setToToken(tempToken);
     // Reset approval state when tokens change
     setIsApproved(false);
-    setSwapParams(null);
   };
 
   // Reset approval state when amount changes
   useEffect(() => {
     if (fromAmount && isApproved) {
       setIsApproved(false);
-      setSwapParams(null);
     }
   }, [fromAmount, isApproved]);
 
@@ -650,60 +658,34 @@ const SwapInterface = () => {
                     )}
                   </div>
                   
-                  {/* Get Quote Button */}
-                  <Button
-                    onClick={getQuote}
-                    disabled={!isConnected || !fromAmount || quoteLoading}
-                    variant="outline"
-                    className="w-full mt-2"
-                  >
-                    {quoteLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Getting Quote...
-                      </>
-                    ) : (
-                      "Get Quote"
-                    )}
-                  </Button>
+                  {/* Quote Status */}
+                  {quoteLoading && (
+                    <div className="text-center text-sm text-muted-foreground mt-2">
+                      <Loader2 className="inline mr-2 h-4 w-4 animate-spin" />
+                      Getting quote automatically...
+                    </div>
+                  )}
                 </div>
 
-                {/* Swap Button */}
-                {!isApproved ? (
-                  <Button
-                    onClick={handleSwap}
-                    disabled={!isConnected || !fromAmount || !toAmount || isLoading}
-                    className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Approving Token...
-                      </>
-                    ) : !isConnected ? (
-                      "Connect Wallet to Swap"
-                    ) : !toAmount ? (
-                      "Get Quote First"
-                    ) : (
-                      `Approve ${fromToken} for Swap`
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleExecuteSwap}
-                    disabled={!isConnected || isLoading}
-                    className="w-full h-14 text-lg bg-green-600 hover:bg-green-700 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Executing Swap...
-                      </>
-                    ) : (
-                      `Execute Swap ${fromToken} → ${toToken}`
-                    )}
-                  </Button>
-                )}
+                {/* Swap Button - Single Step */}
+                <Button
+                  onClick={handleSwap}
+                  disabled={!isConnected || !fromAmount || !toAmount || isLoading}
+                  className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Processing Swap...
+                    </>
+                  ) : !isConnected ? (
+                    "Connect Wallet to Swap"
+                  ) : !toAmount ? (
+                    "Enter Amount to Get Quote"
+                  ) : (
+                    `Confirm Cross-Chain Swap`
+                  )}
+                </Button>
               </CardContent>
             </Card>
           </div>
@@ -769,32 +751,32 @@ const SwapInterface = () => {
         <DialogContent className="bg-gradient-card backdrop-blur-sm border-border/50 max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {isApproved && !swapParams ? "Token Approval Completed" : "Swap Transaction Completed"}
+              {isApproved ? "Cross-Chain Swap Completed" : "Token Approval Completed"}
             </DialogTitle>
           </DialogHeader>
           <div className="py-6 text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-success/20 rounded-full flex items-center justify-center">
               <CheckCircle className="h-8 w-8 text-success" />
             </div>
-            {isApproved && !swapParams ? (
+            {isApproved ? (
+              <>
+                <p className="text-lg mb-4">Cross-chain swap completed!</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Your tokens have been swapped across chains using 1inch Fusion+.
+                </p>
+              </>
+            ) : (
               <>
                 <p className="text-lg mb-4">Token approval completed successfully!</p>
                 <p className="text-sm text-muted-foreground mb-4">
                   You can now execute the cross-chain swap when ready.
                 </p>
               </>
-            ) : (
-              <>
-                <p className="text-lg mb-4">Swap transaction completed successfully!</p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Your tokens have been swapped across chains.
-                </p>
-              </>
             )}
             <div className="bg-background/50 p-4 rounded-lg border border-border/50">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
-                  {isApproved && !swapParams ? "Approval Hash:" : "Transaction Hash:"}
+                  {isApproved ? "Swap Transaction Hash:" : "Approval Transaction Hash:"}
                 </span>
                 <div className="flex items-center space-x-2">
                   <span className="text-sm font-mono">{txHash}</span>

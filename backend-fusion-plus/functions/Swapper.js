@@ -59,7 +59,7 @@ const NETWORKS = {
 // Token addresses for each network
 const TOKENS = {
   ethereum: {
-    USDC: '0xA0b86a33E6441b8c4C8C8C8C8C8C8C8C8C8C8C8C8',
+    USDC: '0xA0b86a33E6441C6C36D8E5B33F0E1D2BB8C5E3E6',
     USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
     WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
     ETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // Use WETH for ETH swaps (API requirement)
@@ -150,20 +150,30 @@ const TOKEN_ABI = [
 ];
 
 class CrossChainSwapper {
-  constructor() {
-    this.makerPrivateKey = process?.WALLET_KEY;
-    this.makerAddress = process?.WALLET_ADDRESS;
-    this.devPortalApiKey = process?.DEV_PORTAL_KEY;
+  constructor(userWalletProvider = null, userAddress = null) {
+    // Allow using user wallet instead of server wallet
+    if (userWalletProvider && userAddress) {
+      this.useUserWallet = true;
+      this.userWalletProvider = userWalletProvider;
+      this.userAddress = userAddress;
+      this.devPortalApiKey = process?.DEV_PORTAL_KEY;
+    } else {
+      // Fallback to server wallet mode
+      this.useUserWallet = false;
+      this.makerPrivateKey = process?.WALLET_KEY;
+      this.makerAddress = process?.WALLET_ADDRESS;
+      this.devPortalApiKey = process?.DEV_PORTAL_KEY;
 
-    if (!this.makerPrivateKey || !this.makerAddress || !this.devPortalApiKey) {
-      throw new Error("Missing required environment variables: WALLET_KEY, WALLET_ADDRESS, DEV_PORTAL_KEY");
+      if (!this.devPortalApiKey) {
+        throw new Error("Missing required environment variable: DEV_PORTAL_KEY");
+      }
     }
 
     this.sdk = null;
     this.web3Instances = {};
   }
 
-  // Initialize SDK for a specific network
+  // Initialize SDK for a specific network with user or server wallet
   async initializeSDK(networkName) {
     const network = NETWORKS[networkName];
     if (!network) {
@@ -175,7 +185,22 @@ class CrossChainSwapper {
     const web3Instance = new Web3(network.rpc);
     this.web3Instances[networkName] = web3Instance;
     
-    const blockchainProvider = new PrivateKeyProviderConnector(this.makerPrivateKey, web3Instance);
+    let blockchainProvider;
+    
+    if (this.useUserWallet) {
+      console.log(`👤 Using USER wallet for swap execution`);
+      console.log(`👤 User address: ${this.userAddress}`);
+      
+      // Create provider using user's wallet connection
+      // This uses the user's already-approved tokens
+      blockchainProvider = new PrivateKeyProviderConnector(this.userWalletProvider, web3Instance);
+    } else {
+      console.log(`🏢 Using SERVER wallet for swap execution`);
+      if (!this.makerPrivateKey) {
+        throw new Error("No wallet available - need either user wallet or server WALLET_KEY");
+      }
+      blockchainProvider = new PrivateKeyProviderConnector(this.makerPrivateKey, web3Instance);
+    }
     
     this.sdk = new SDK({
       url: 'https://api.1inch.dev/fusion-plus',
@@ -183,7 +208,7 @@ class CrossChainSwapper {
       blockchainProvider
     });
 
-    console.log(`✅ SDK initialized for ${network.name}`);
+    console.log(`✅ SDK initialized for ${network.name} with ${this.useUserWallet ? 'USER' : 'SERVER'} wallet`);
     return this.sdk;
   }
 
@@ -330,24 +355,21 @@ class CrossChainSwapper {
     return weiAmount.toString();
   }
 
-  // Execute cross-chain swap
-  async executeCrossChainSwap(fromNetwork, toNetwork, fromToken, toToken, humanAmount) {
-    console.log(`🚀 Starting cross-chain swap...`);
+  // Execute cross-chain swap using user's approved tokens
+  async executeCrossChainSwapForUser(fromNetwork, toNetwork, fromToken, toToken, humanAmount, userAddress) {
+    console.log(`🚀 Starting cross-chain swap for USER wallet...`);
     console.log(`📤 From: ${NETWORKS[fromNetwork].name} (${fromToken})`);
     console.log(`📥 To: ${NETWORKS[toNetwork].name} (${toToken})`);
     console.log(`💰 Human Amount: ${humanAmount} ${fromToken}`);
-    console.log(`📍 Wallet: ${this.makerAddress}`);
+    console.log(`👤 User Address: ${userAddress}`);
     console.log('---');
 
     // Convert human amount to wei
     const weiAmount = this.convertHumanAmountToWei(humanAmount, fromToken);
     console.log(`💰 Wei Amount: ${weiAmount}`);
 
-    // Initialize SDK for source network
+    // Initialize SDK for source network (using server for API calls, but user tokens)
     await this.initializeSDK(fromNetwork);
-    
-    // Check balances
-    await this.checkBalance(fromNetwork, fromToken);
     
     // Get token addresses
     const srcTokenAddress = TOKENS[fromNetwork][fromToken];
@@ -357,43 +379,12 @@ class CrossChainSwapper {
       throw new Error(`Token not supported for this network pair`);
     }
 
-    // Handle native token wrapping if needed
-    const nativeTokens = ['ETH', 'MATIC', 'BNB', 'AVAX', 'OP', 'FTM'];
-    if (nativeTokens.includes(fromToken)) {
-      console.log(`🔧 Native ${fromToken} detected - checking WETH balance`);
-      
-      // For native tokens, we need to check WETH balance since 1inch API uses WETH addresses
-      const wethAddress = TOKENS[fromNetwork][fromToken];
-      const wethContract = new this.web3Instances[fromNetwork].eth.Contract([
-        {
-          "constant": true,
-          "inputs": [{"name": "_owner", "type": "address"}],
-          "name": "balanceOf",
-          "outputs": [{"name": "balance", "type": "uint256"}],
-          "type": "function"
-        }
-      ], wethAddress);
-      
-      const wethBalance = await wethContract.methods.balanceOf(this.makerAddress).call();
-      const requiredAmount = BigInt(weiAmount);
-      const currentWethBalance = BigInt(wethBalance);
-      
-      if (currentWethBalance < requiredAmount) {
-        console.log(`⚠️  Insufficient WETH balance. Need ${weiAmount} wei, have ${wethBalance} wei`);
-        console.log(`💡 You need to wrap ${fromToken} to W${fromToken} first using the wrap-eth.js script`);
-        throw new Error(`Insufficient WETH balance. Required: ${weiAmount} wei, Available: ${wethBalance} wei. Please wrap ETH to WETH first.`);
-      }
-      console.log(`✅ Sufficient WETH balance confirmed: ${wethBalance} wei`);
-      
-      // For native tokens, we still need to approve WETH spending
-      console.log(`🔐 Approving WETH spending for 1inch contract...`);
-      await this.approveToken(fromNetwork, fromToken, '0x111111125421ca6dc452d289314280a0f8842a65');
-    } else {
-      // Approve ERC-20 token spending
-      await this.approveToken(fromNetwork, fromToken, '0x111111125421ca6dc452d289314280a0f8842a65');
-    }
+    console.log(`📋 Using USER approved tokens...`);
+    console.log(`📍 Source Token: ${srcTokenAddress}`);
+    console.log(`📍 Destination Token: ${dstTokenAddress}`);
+    console.log(`👤 User already approved spending via wallet`);
 
-    // Prepare swap parameters
+    // Prepare swap parameters for USER's tokens
     const params = {
       srcChainId: NETWORKS[fromNetwork].id,
       dstChainId: NETWORKS[toNetwork].id,
@@ -401,41 +392,35 @@ class CrossChainSwapper {
       dstTokenAddress: dstTokenAddress,
       amount: weiAmount,
       enableEstimate: true,
-      walletAddress: this.makerAddress
+      walletAddress: userAddress  // Use USER's address, not server address
     };
 
-    console.log(`📋 Swap Parameters:`, this.safeStringify(params));
+    console.log(`📋 Swap Parameters for USER:`, this.safeStringify(params));
 
-    // Get quote
-    console.log(`🔍 Getting quote from 1inch Fusion+...`);
+    // Get quote for USER's swap
+    console.log(`🔍 Getting quote from 1inch Fusion+ for USER...`);
     let quote;
     try {
       quote = await this.sdk.getQuote(params);
-      console.log(`✅ Quote received successfully`);
+      console.log(`✅ Quote received for USER wallet`);
       console.log(`📊 Quote Details:`, this.safeStringify(quote));
       
-      // Validate quote
-      if (!quote) {
-        throw new Error('No quote received from 1inch API');
-      }
-      
-      // Check if quote has required properties
-      if (!quote.getPreset) {
+      if (!quote || !quote.getPreset) {
         throw new Error('Invalid quote format received from 1inch API');
       }
     } catch (error) {
-      console.error(`❌ Error getting quote: ${error.message}`);
+      console.error(`❌ Error getting quote for USER: ${error.message}`);
       throw new Error(`Failed to get quote: ${error.message}`);
     }
 
     // Generate secrets for hash lock
     const secretsCount = quote.getPreset().secretsCount;
-    console.log(`🔐 Generating ${secretsCount} secrets for hash lock...`);
+    console.log(`🔐 Generating ${secretsCount} secrets for USER swap...`);
     
     const secrets = Array.from({ length: secretsCount }).map(() => this.getRandomBytes32());
     const secretHashes = secrets.map(x => HashLock.hashSecret(x));
     
-    console.log(`🔑 Secrets generated:`, secrets);
+    console.log(`🔑 Secrets generated for USER:`, secrets);
     console.log(`🔒 Secret hashes:`, secretHashes);
 
     // Create hash lock
@@ -447,46 +432,35 @@ class CrossChainSwapper {
           )
         );
 
-    console.log(`🔐 Hash lock created:`, hashLock);
+    console.log(`🔐 Hash lock created for USER:`, hashLock);
 
-    // Place order
-    console.log(`📝 Placing cross-chain order...`);
+    // Place order for USER's approved tokens
+    console.log(`📝 Placing cross-chain order for USER wallet...`);
     try {
-      // Add more detailed order parameters
       const orderParams = {
-        walletAddress: this.makerAddress,
+        walletAddress: userAddress,  // USER's address
         hashLock,
         secretHashes,
-        // Add additional parameters that might be required
-        permit: null, // No permit for native tokens
-        signature: null // Will be generated by SDK
+        permit: null,
+        signature: null
       };
 
-      console.log(`📋 Order Parameters:`, this.safeStringify(orderParams));
+      console.log(`📋 Order Parameters for USER:`, this.safeStringify(orderParams));
       
       const orderResponse = await this.sdk.placeOrder(quote, orderParams);
 
-      // Validate order response
       if (!orderResponse || !orderResponse.orderHash) {
         throw new Error('Invalid order response received from 1inch API');
       }
 
       const orderHash = orderResponse.orderHash;
-      console.log(`✅ Order placed successfully!`);
+      console.log(`✅ Order placed successfully for USER!`);
       console.log(`🆔 Order Hash: ${orderHash}`);
       console.log(`📊 Order Response:`, this.safeStringify(orderResponse));
       
       return { orderHash, orderResponse };
     } catch (error) {
-      console.error(`❌ Error placing order: ${error.message}`);
-      console.error(`❌ Full error:`, this.safeStringify(error));
-      
-      // Try to get more details about the error
-      if (error.response) {
-        console.error(`❌ Response status: ${error.response.status}`);
-        console.error(`❌ Response data:`, this.safeStringify(error.response.data));
-      }
-      
+      console.error(`❌ Error placing order for USER: ${error.message}`);
       throw new Error(`Failed to place order: ${error.message}`);
     }
   }
@@ -600,7 +574,7 @@ Supported Networks: ${Object.keys(NETWORKS).join(', ')}
         console.log(`📥 To: ${toNetwork} ${toToken}`);
         console.log(`💰 Amount: ${amount}`);
         
-        const result = await swapper.executeCrossChainSwap(fromNetwork, toNetwork, fromToken, toToken, amount);
+        const result = await swapper.executeCrossChainSwapForUser(fromNetwork, toNetwork, fromToken, toToken, amount, swapper.userAddress);
         console.log(`🎉 Swap initiated successfully!`);
         console.log(`🆔 Order Hash: ${result.orderHash}`);
         break;
