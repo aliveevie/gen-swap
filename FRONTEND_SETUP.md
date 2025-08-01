@@ -37,7 +37,7 @@ VITE_API_BASE_URL=http://localhost:9056/api
 The frontend needs these packages for wallet integration:
 
 ```bash
-npm install ethers @1inch/cross-chain-sdk
+pnpm install ethers @1inch/cross-chain-sdk
 ```
 
 ## Wallet Support

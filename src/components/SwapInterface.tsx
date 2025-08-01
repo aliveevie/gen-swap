@@ -14,14 +14,15 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount, useChainId, useSwitchChain } from 'wagmi';
+import { useAccount, useChainId, useSwitchChain, useBalance } from 'wagmi';
 import WalletConnector from "./WalletConnector";
 import { ClientSwapper } from "@/lib/clientSwapper";
 
@@ -65,6 +66,101 @@ const SwapInterface = () => {
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
 
+  // Get token address for balance checking
+  const getTokenAddressForBalance = (networkId: string, tokenSymbol: string) => {
+    // For native tokens like ETH, return undefined to use native balance
+    if (tokenSymbol === 'ETH') {
+      return undefined;
+    }
+    
+    const networkName = Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === networkId);
+    if (!networkName || !TOKENS[networkName] || !TOKENS[networkName][tokenSymbol]) {
+      return undefined;
+    }
+    return TOKENS[networkName][tokenSymbol] as `0x${string}`;
+  };
+
+  // Get token decimals for balance formatting
+  const getTokenDecimals = (tokenSymbol: string) => {
+    const tokenDecimals = {
+      'USDC': 6, 'USDT': 6, 'DAI': 18, 'WETH': 18, 'WBTC': 8,
+      'ETH': 18, 'MATIC': 18, 'BNB': 18, 'AVAX': 18, 'OP': 18, 'FTM': 18
+    };
+    return tokenDecimals[tokenSymbol] || 18;
+  };
+
+  // Get current chain configuration for wagmi
+  const getCurrentChain = () => {
+    const chainIdNum = parseInt(fromChain);
+    switch (chainIdNum) {
+      case 1: return { id: 1, name: 'Ethereum' };
+      case 42161: return { id: 42161, name: 'Arbitrum' };
+      case 8453: return { id: 8453, name: 'Base' };
+      case 137: return { id: 137, name: 'Polygon' };
+      case 56: return { id: 56, name: 'BSC' };
+      case 43114: return { id: 43114, name: 'Avalanche' };
+      case 10: return { id: 10, name: 'Optimism' };
+      case 250: return { id: 250, name: 'Fantom' };
+      default: return { id: 1, name: 'Ethereum' };
+    }
+  };
+
+  // Get token balance using wagmi
+  const tokenAddress = getTokenAddressForBalance(fromChain, fromToken);
+  const { data: tokenBalance, isLoading: balanceLoading, refetch: refetchBalance } = useBalance({
+    address: address,
+    token: tokenAddress,
+    chainId: parseInt(fromChain),
+  });
+
+  // Get native token balance (ETH, MATIC, etc.)
+  const { data: nativeBalance, isLoading: nativeBalanceLoading } = useBalance({
+    address: address,
+    chainId: parseInt(fromChain),
+  });
+
+  // Format balance for display
+  const formatBalance = (balance: any, decimals: number) => {
+    if (!balance || !balance.value) return '0.00';
+    const formatted = (Number(balance.value) / Math.pow(10, decimals)).toFixed(6);
+    // Remove trailing zeros after decimal
+    return formatted.replace(/\.?0+$/, '');
+  };
+
+  // Get current balance
+  const getCurrentBalance = () => {
+    // For native tokens (ETH, MATIC, etc.), use native balance
+    const nativeTokens = ['ETH', 'MATIC', 'BNB', 'AVAX', 'OP', 'FTM'];
+    if (nativeTokens.includes(fromToken)) {
+      return nativeBalance;
+    }
+    return tokenBalance;
+  };
+
+  // Check if user has sufficient balance
+  const hasSufficientBalance = () => {
+    if (!fromAmount || parseFloat(fromAmount) <= 0) return false;
+    
+    const currentBalance = getCurrentBalance();
+    if (!currentBalance || !currentBalance.value) return false;
+    
+    const decimals = getTokenDecimals(fromToken);
+    const requiredAmount = BigInt(Math.floor(parseFloat(fromAmount) * Math.pow(10, decimals)));
+    const userBalance = currentBalance.value;
+    
+    return userBalance >= requiredAmount;
+  };
+
+  // Get balance loading state
+  const isBalanceLoading = () => {
+    // For native tokens, use native balance loading state
+    const nativeTokens = ['ETH', 'MATIC', 'BNB', 'AVAX', 'OP', 'FTM'];
+    if (nativeTokens.includes(fromToken)) {
+      return nativeBalanceLoading;
+    }
+    return balanceLoading;
+  };
+
   // Get available tokens for selected chains
   const getFromTokens = () => {
     const networkName = Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === fromChain);
@@ -105,6 +201,13 @@ const SwapInterface = () => {
       setFromChain(chainId.toString());
     }
   }, [chainId, isConnected]);
+
+  // Refetch balance when token or chain changes
+  useEffect(() => {
+    if (isConnected && address) {
+      refetchBalance();
+    }
+  }, [fromToken, fromChain, isConnected, address, refetchBalance]);
 
   // Handle wallet connection status changes
   useEffect(() => {
@@ -322,6 +425,18 @@ const SwapInterface = () => {
       toast({
         title: "Error",
         description: "Please get a quote first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if user has sufficient balance
+    if (!hasSufficientBalance()) {
+      const currentBalance = getCurrentBalance();
+      const balanceFormatted = formatBalance(currentBalance, getTokenDecimals(fromToken));
+      toast({
+        title: "Insufficient Balance",
+        description: `You have ${balanceFormatted} ${fromToken} but need ${fromAmount} ${fromToken}`,
         variant: "destructive"
       });
       return;
@@ -547,6 +662,45 @@ const SwapInterface = () => {
                     onChange={(e) => setFromAmount(e.target.value)}
                     className="text-2xl h-14 bg-background/50 border-border/50 hover:border-primary/50 focus:border-primary transition-colors"
                   />
+                  <div className="flex items-center justify-between mt-2">
+                    {isBalanceLoading() ? (
+                      <div className="text-sm text-muted-foreground">
+                        <Loader2 className="inline mr-2 h-4 w-4 animate-spin" />
+                        Loading balance...
+                      </div>
+                    ) : isConnected ? (
+                      <div className="text-sm text-muted-foreground">
+                        <span className="font-medium">Balance:</span> {formatBalance(getCurrentBalance(), getTokenDecimals(fromToken))} {fromToken}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        <span className="font-medium">Balance:</span> Connect wallet to see balance
+                      </div>
+                    )}
+                    {isConnected && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => refetchBalance()}
+                        className="h-6 px-2 hover:bg-primary/20"
+                        disabled={isBalanceLoading()}
+                      >
+                        <RefreshCw className={`h-3 w-3 ${isBalanceLoading() ? 'animate-spin' : ''}`} />
+                      </Button>
+                    )}
+                  </div>
+                  {!isConnected && (
+                    <div className="text-sm text-muted-foreground mt-2">
+                      <AlertTriangle className="inline mr-2 h-4 w-4 text-warning" />
+                      Please connect your wallet to see balance.
+                    </div>
+                  )}
+                  {isConnected && !isBalanceLoading() && !hasSufficientBalance() && fromAmount && parseFloat(fromAmount) > 0 && (
+                    <div className="text-sm text-destructive mt-2">
+                      <AlertTriangle className="inline mr-2 h-4 w-4" />
+                      Insufficient balance. You need {fromAmount} {fromToken} but have {formatBalance(getCurrentBalance(), getTokenDecimals(fromToken))} {fromToken}.
+                    </div>
+                  )}
                 </div>
 
                 {/* Flip Button */}
@@ -623,7 +777,7 @@ const SwapInterface = () => {
                 {/* Swap Button */}
                 <Button
                   onClick={handleSwap}
-                  disabled={!isConnected || !fromAmount || !toAmount || isLoading}
+                  disabled={!isConnected || !fromAmount || !toAmount || isLoading || !hasSufficientBalance()}
                   className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
                 >
                   {isLoading ? (
@@ -633,8 +787,15 @@ const SwapInterface = () => {
                     </>
                   ) : !isConnected ? (
                     "Connect Wallet to Swap"
-                  ) : !toAmount ? (
+                  ) : !fromAmount ? (
                     "Enter Amount to Get Quote"
+                  ) : !toAmount ? (
+                    "Getting Quote..."
+                  ) : !hasSufficientBalance() ? (
+                    <>
+                      <AlertTriangle className="mr-2 h-5 w-5" />
+                      Insufficient Balance
+                    </>
                   ) : (
                     `Swap ${fromAmount} ${fromToken} for ${toAmount} ${toToken}`
                   )}
