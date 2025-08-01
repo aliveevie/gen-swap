@@ -257,10 +257,10 @@ app.get('/api/sdk-status', (req, res) => {
 // Get quote for swap (using real Swapper.js logic)
 app.post('/api/quote', async (req, res) => {
   try {
-    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, web3Provider, approve, approvalTxHash, quote } = req.body;
+            const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, web3Provider, approve, approvalTxHash, quote, eip712Signature, userRpcUrl } = req.body;
     
     console.log('🚀 /api/quote endpoint called with parameters:');
-    console.log('📋 Request body:', { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, hasWeb3Provider: !!web3Provider, approve, hasApprovalTxHash: !!approvalTxHash, hasQuote: !!quote });
+    console.log('📋 Request body:', { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, hasWeb3Provider: !!web3Provider, approve, hasApprovalTxHash: !!approvalTxHash, hasQuote: !!quote, hasEIP712Signature: !!eip712Signature, userRpcUrl });
     
     // Use global SDK if available, otherwise create new one
     let sdk = globalSDK;
@@ -297,7 +297,7 @@ app.post('/api/quote', async (req, res) => {
         console.log('✅ Retrieved full quote from memory store');
         
         try {
-            const submitOrderResult = await submitOrder(fullQuote, sdk, approve, walletAddress);
+            const submitOrderResult = await submitOrder(fullQuote, approve, walletAddress, eip712Signature, userRpcUrl);
             console.log('✅ Submit order result from submitOrder.js:', submitOrderResult);
             
             // Clean up the stored quote
@@ -350,7 +350,7 @@ app.post('/api/quote', async (req, res) => {
         });
         
         try {
-            const submitOrderResult = await submitOrder(quoteResult, sdk, approve, walletAddress);
+            const submitOrderResult = await submitOrder(quoteResult, approve, walletAddress, eip712Signature, userRpcUrl);
             console.log('✅ Submit order result from submitOrder.js:', submitOrderResult);
             
             // Return the submit order result along with quote

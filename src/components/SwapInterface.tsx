@@ -971,12 +971,12 @@ const SwapInterface = () => {
           
           toast({
             title: "✅ Tokens Approved!",
-            description: "Token approval confirmed on blockchain. Processing swap...",
+            description: "Token approval confirmed. Now signing order data...",
           });
 
-          // Now send the approval status to backend with quote data
-          console.log('🎉 Token approval confirmed - now sending data to backend');
-          await processApprovedSwap(transactionHash);
+          // Now prompt user to sign EIP-712 data for order placement
+          console.log('🎉 Token approval confirmed - now requesting EIP-712 signature');
+          await requestEIP712Signature(transactionHash);
 
         } catch (walletError: any) {
           console.error('❌ Wallet transaction failed:', walletError);
@@ -1013,8 +1013,93 @@ const SwapInterface = () => {
     }
   };
 
-  // Process approved swap with stored quote data
-  const processApprovedSwap = async (approvalTxResult: any) => {
+  // Request EIP-712 signature for order placement
+  const requestEIP712Signature = async (approvalTxResult: any) => {
+    if (!currentQuote || !address) {
+      console.error('❌ Missing required data for EIP-712 signing');
+      toast({
+        title: "Error",
+        description: "No quote data or wallet address available",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log('🔐 Requesting EIP-712 signature for order placement');
+      
+      // Get the wallet provider
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('No wallet provider available');
+      }
+
+      // Create the EIP-712 domain and types for 1inch order
+      const domain = {
+        name: '1inch',
+        version: '1',
+        chainId: parseInt(fromChain),
+        verifyingContract: '0x1111111254EEB25477B68fb85Ed929f73A960582' // 1inch router
+      };
+
+      const types = {
+        Order: [
+          { name: 'salt', type: 'uint256' },
+          { name: 'makerAsset', type: 'address' },
+          { name: 'takerAsset', type: 'address' },
+          { name: 'maker', type: 'address' },
+          { name: 'receiver', type: 'address' },
+          { name: 'allowedSender', type: 'address' },
+          { name: 'makingAmount', type: 'uint256' },
+          { name: 'takingAmount', type: 'uint256' },
+          { name: 'offsets', type: 'uint256' },
+          { name: 'interactions', type: 'bytes' }
+        ]
+      };
+
+      // Create the order data (this will be filled by the backend)
+      const value = {
+        salt: '0', // Will be set by backend
+        makerAsset: getTokenAddress(fromChain, fromToken),
+        takerAsset: getTokenAddress(toChain, toToken),
+        maker: address,
+        receiver: address,
+        allowedSender: '0x0000000000000000000000000000000000000000',
+        makingAmount: Math.floor(parseFloat(fromAmount) * Math.pow(10, getTokenDecimals(fromToken))).toString(),
+        takingAmount: '0', // Will be set by backend
+        offsets: '0',
+        interactions: '0x'
+      };
+
+      console.log('🔐 EIP-712 data to sign:', { domain, types, value });
+
+      // Request signature from wallet
+      const signature = await window.ethereum.request({
+        method: 'eth_signTypedData_v4',
+        params: [address, JSON.stringify({ domain, types, primaryType: 'Order', message: value })]
+      });
+
+      console.log('✅ EIP-712 signature received:', signature);
+
+      toast({
+        title: "✅ Order Signed!",
+        description: "Order data signed successfully. Submitting to backend...",
+      });
+
+      // Now send the signed data to backend
+      await processApprovedSwap(approvalTxResult, signature);
+
+    } catch (error: any) {
+      console.error('❌ EIP-712 signing failed:', error);
+      toast({
+        title: "Signing Failed",
+        description: error.message || "Failed to sign order data. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Process approved swap with stored quote data and signature
+  const processApprovedSwap = async (approvalTxResult: any, eip712Signature?: string) => {
     if (!currentQuote || !address) {
       console.error('❌ Missing required data for swap processing');
       console.error('❌ currentQuote:', currentQuote);
@@ -1047,7 +1132,25 @@ const SwapInterface = () => {
       console.log('📋 Approval transaction result:', approvalTxResult);
       console.log('📋 Stored quote has getPreset method:', !!currentQuote.getPreset);
       
-      // Use the stored quote data with reference ID
+      // Get the RPC URL from user's connected network
+      const getRpcUrl = (chainId: string) => {
+        const rpcUrls = {
+          '1': 'https://eth.llamarpc.com', // Ethereum
+          '42161': 'https://arb1.arbitrum.io/rpc', // Arbitrum
+          '8453': 'https://mainnet.base.org', // Base
+          '137': 'https://polygon-rpc.com', // Polygon
+          '56': 'https://bsc-dataseed.binance.org', // BSC
+          '43114': 'https://api.avax.network/ext/bc/C/rpc', // Avalanche
+          '10': 'https://mainnet.optimism.io', // Optimism
+          '250': 'https://rpc.ftm.tools' // Fantom
+        };
+        return rpcUrls[chainId] || 'https://eth.llamarpc.com';
+      };
+
+      const userRpcUrl = getRpcUrl(fromChain);
+      console.log('🌐 User RPC URL for chain', fromChain, ':', userRpcUrl);
+
+      // Use the stored quote data with reference ID and signature
       const swapParams = {
         srcChainId: parseInt(fromChain),
         dstChainId: parseInt(toChain),
@@ -1057,6 +1160,8 @@ const SwapInterface = () => {
         walletAddress: address,
         approve: true, // Send approval status
         approvalTxHash: approvalTxResult,
+        eip712Signature: eip712Signature, // Send the signed EIP-712 data
+        userRpcUrl: userRpcUrl, // Send the user's RPC URL
         quote: {
           quoteReferenceId: currentQuote.quoteReferenceId
         } // Only send the reference ID, not the full quote object
