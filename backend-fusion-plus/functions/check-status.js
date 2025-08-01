@@ -3,7 +3,7 @@ const axios = require("axios");
 
 async function httpCall() {
   const url =
-    "https://api.1inch.dev/fusion-plus/orders/v1.0/order/status/0xd18101a77becd523c21fe880f74ebb4f04bee42be7d5eaa20714bba2f33ca3d4";
+    "https://api.1inch.dev/fusion-plus/orders/v1.0/order/status/0x1ab8831b1d01cd4741dea6df32f41f347ea5592f74646487b1db6cfcfa446030";
 
   // Debug: Check if API key is loaded
   console.log("API Key loaded:", process.env.DEV_PORTAL_KEY ? "Yes" : "No");

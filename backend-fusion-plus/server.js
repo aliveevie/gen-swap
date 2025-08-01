@@ -10,6 +10,15 @@ const { CrossChainSwapper, NETWORKS, TOKENS } = require('./functions/Swapper.js'
 // Import provider functions for TRUE DeFi SDK creation
 const { createSDKWithProvider, getAuthKey, validateSDK } = require('./functions/createProvider.js');
 
+// Import required 1inch SDK components
+const { SDK, NetworkEnum, HashLock } = require('@1inch/cross-chain-sdk');
+const { solidityPackedKeccak256, randomBytes } = require('ethers');
+
+// Helper function to generate random bytes32
+function getRandomBytes32() {
+  return '0x' + Buffer.from(randomBytes(32)).toString('hex');
+}
+
 const app = express();
 const PORT = process.env.PORT || 9056;
 
@@ -705,6 +714,225 @@ app.post('/api/execute-swap-direct', async (req, res) => {
   }
 });
 
+// Create order using global SDK
+app.post('/api/create-order', async (req, res) => {
+  try {
+    const { 
+      srcChainId, 
+      dstChainId, 
+      srcTokenAddress, 
+      dstTokenAddress, 
+      amount, 
+      walletAddress,
+      web3Provider 
+    } = req.body;
+    
+    console.log('🚀 /api/create-order endpoint called with parameters:');
+    console.log('📋 Request body:', { 
+      srcChainId, 
+      dstChainId, 
+      srcTokenAddress, 
+      dstTokenAddress, 
+      amount, 
+      walletAddress, 
+      hasWeb3Provider: !!web3Provider 
+    });
+    
+    // Validate required parameters
+    if (!srcChainId || !dstChainId || !srcTokenAddress || !dstTokenAddress || !amount || !walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters for order creation'
+      });
+    }
+
+    // Use global SDK if available, otherwise create new one
+    let sdk = globalSDK;
+    if (!sdk && web3Provider) {
+      try {
+        console.log('🔧 Creating new SDK with user wallet provider for order creation...');
+        sdk = createSDKWithProvider(web3Provider);
+        console.log('✅ New SDK created successfully for order creation');
+      } catch (sdkError) {
+        console.error('❌ SDK creation failed for order creation:', sdkError.message);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to create SDK for order creation',
+          details: sdkError.message
+        });
+      }
+    } else if (sdk) {
+      console.log('✅ Using existing global SDK for order creation');
+    } else {
+      return res.status(500).json({
+        success: false,
+        error: 'No SDK available for order creation'
+      });
+    }
+
+    // Convert chain IDs to NetworkEnum if needed
+    const srcChain = typeof srcChainId === 'number' ? srcChainId : parseInt(srcChainId);
+    const dstChain = typeof dstChainId === 'number' ? dstChainId : parseInt(dstChainId);
+
+    // Prepare quote parameters
+    const quoteParams = {
+      srcChainId: srcChain,
+      dstChainId: dstChain,
+      srcTokenAddress: srcTokenAddress,
+      dstTokenAddress: dstTokenAddress,
+      amount: amount,
+      enableEstimate: true,
+      walletAddress: walletAddress,
+    };
+
+    console.log('📋 Quote parameters:', quoteParams);
+
+    // Get quote first
+    console.log('🔍 Getting quote for order creation...');
+    const quote = await sdk.getQuote(quoteParams);
+    console.log('✅ Quote received:', quote);
+
+    // Generate secrets and hash lock
+    const secretsCount = quote.getPreset().secretsCount;
+    console.log('🔐 Secrets count:', secretsCount);
+
+    const secrets = Array.from({ length: secretsCount }).map(() => getRandomBytes32());
+    const secretHashes = secrets.map((x) => HashLock.hashSecret(x));
+
+    console.log('🔑 Generated secrets:', secrets.length);
+    console.log('🔒 Generated secret hashes:', secretHashes.length);
+
+    // Create hash lock
+    const hashLock = secretsCount === 1
+      ? HashLock.forSingleFill(secrets[0])
+      : HashLock.forMultipleFills(
+          secretHashes.map((secretHash, i) =>
+            solidityPackedKeccak256(
+              ["uint64", "bytes32"],
+              [i, secretHash.toString()],
+            ),
+          ),
+        );
+
+    console.log('🔒 Hash lock created');
+
+    // Create order
+    console.log('📝 Creating order with SDK...');
+    let order;
+    try {
+      order = await sdk.createOrder(quote, {
+        walletAddress: walletAddress,
+        hashLock,
+        secretHashes,
+        // Optional fee configuration
+        fee: {
+          takingFeeBps: 100, // 1% fee
+          takingFeeReceiver: "0x0000000000000000000000000000000000000000", // fee receiver address
+        },
+      });
+
+      console.log('✅ Order created successfully');
+      console.log('📋 Order type:', typeof order);
+      console.log('📋 Order keys:', Object.keys(order || {}));
+    } catch (orderError) {
+      console.error('❌ Order creation failed:', orderError);
+      throw new Error(`Order creation failed: ${orderError.message}`);
+    }
+
+    // Generate order hash for tracking
+    const orderHash = '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
+
+    // Helper function to convert BigInt values to strings for JSON serialization
+    const convertBigIntToString = (obj) => {
+      if (obj === null || obj === undefined) return obj;
+      
+      if (typeof obj === 'bigint') {
+        return obj.toString();
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(convertBigIntToString);
+      }
+      
+      if (typeof obj === 'object') {
+        const converted = {};
+        for (const [key, value] of Object.entries(obj)) {
+          converted[key] = convertBigIntToString(value);
+        }
+        return converted;
+      }
+      
+      return obj;
+    };
+
+    // Convert order and quote objects to be JSON serializable
+    const serializableOrder = convertBigIntToString(order);
+    const serializableQuote = convertBigIntToString(quote);
+    const serializableHashLock = convertBigIntToString(hashLock);
+
+    // Prepare response data
+    const responseData = {
+      success: true,
+      message: 'Order created successfully',
+      data: {
+        orderHash: orderHash,
+        order: serializableOrder,
+        quote: serializableQuote,
+        secrets: secrets,
+        secretHashes: secretHashes,
+        hashLock: serializableHashLock,
+        srcChainId: srcChain,
+        dstChainId: dstChain,
+        srcTokenAddress: srcTokenAddress,
+        dstTokenAddress: dstTokenAddress,
+        amount: amount,
+        walletAddress: walletAddress,
+        status: 'pending_approval',
+        timestamp: new Date().toISOString(),
+        globalSDKUsed: sdk === globalSDK,
+        connectionStatus: sdkConnectionStatus
+      }
+    };
+
+    // Test JSON serialization before sending
+    try {
+      JSON.stringify(responseData);
+      console.log('✅ Response data is JSON serializable');
+      res.json(responseData);
+    } catch (serializationError) {
+      console.error('❌ JSON serialization failed:', serializationError);
+      
+      // Send a simplified response without problematic data
+      res.json({
+        success: true,
+        message: 'Order created successfully (simplified response)',
+        data: {
+          orderHash: orderHash,
+          srcChainId: srcChain,
+          dstChainId: dstChain,
+          srcTokenAddress: srcTokenAddress,
+          dstTokenAddress: dstTokenAddress,
+          amount: amount,
+          walletAddress: walletAddress,
+          status: 'pending_approval',
+          timestamp: new Date().toISOString(),
+          globalSDKUsed: sdk === globalSDK,
+          connectionStatus: sdkConnectionStatus,
+          note: 'Order created successfully, but some data omitted due to serialization issues'
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error creating order:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create order',
+      details: 'Check SDK connection and parameters'
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -720,6 +948,7 @@ app.listen(PORT, () => {
   console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
   console.log(`🔌 SDK Connection: http://localhost:${PORT}/api/test-sdk`);
   console.log(`📊 SDK Status: http://localhost:${PORT}/api/sdk-status`);
+  console.log(`📝 Order Creation: http://localhost:${PORT}/api/create-order`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
   console.log(`🔧 TRUE DeFi Status: ${process.env.DEV_PORTAL_KEY ? '✅ Ready for swaps' : '⚠️  DEV_PORTAL_KEY required'}`);
   console.log(`👤 User Role: Sign ALL transactions in their own wallet`);
