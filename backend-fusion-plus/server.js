@@ -8,7 +8,7 @@ const { getQuote } = require('./functions/getQuote.js');
 const { placeOrder, placeOrderSerializable } = require('./functions/placeOrder.js');
 // Import the real Swapper logic
 const { CrossChainSwapper, NETWORKS, TOKENS } = require('./functions/Swapper.js');
-
+const { submitOrder } = require('./functions/submitOrder.js');
 // Import provider functions for TRUE DeFi SDK creation
 const { createSDKWithProvider, getAuthKey, validateSDK } = require('./functions/createProvider.js');
 const { Swapping } = require('./functions/orderWithGlobal.js');
