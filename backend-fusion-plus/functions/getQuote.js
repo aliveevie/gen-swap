@@ -47,17 +47,9 @@ async function getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress
     const quote = await sdk.getQuote(params);
     console.log('✅ Quote received from 1inch:', quote);
     
-    // Extract the dstTokenAmount and convert BigInt to string
-    const dstTokenAmount = quote.dstTokenAmount ? quote.dstTokenAmount.toString() : '0';
-    console.log('💰 dstTokenAmount extracted:', dstTokenAmount);
-    
-    return {
-      success: true,
-      dstTokenAmount: dstTokenAmount,
-      quoteId: quote.quoteId,
-      slippage: quote.slippage,
-      recommendedPreset: quote.recommendedPreset
-    };
+    // Return the FULL quote object (with getPreset method)
+    console.log('📋 Returning full quote object with getPreset method');
+    return quote;
   } catch (error) {
     console.error('❌ Error getting quote:', error);
     throw error;

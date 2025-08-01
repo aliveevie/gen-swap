@@ -6,6 +6,12 @@ function getRandomBytes32() {
 }
 
 function submitOrder(quote, sdk, approve, walletAddress) {
+    console.log('🔐 Starting order submission...');
+    console.log('🔐 Quote:', quote);
+    console.log('🔐 SDK:', sdk);
+    console.log('🔐 Approve:', approve);
+    console.log('🔐 Wallet address:', walletAddress);
+
     const secretsCount = quote.getPreset().secretsCount;
     const secrets = Array.from({ length: secretsCount }).map(() => getRandomBytes32());
     const secretHashes = secrets.map(x => HashLock.hashSecret(x));

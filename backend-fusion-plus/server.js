@@ -26,6 +26,10 @@ app.use(express.json());
 let globalSDK = null;
 let sdkConnectionStatus = 'disconnected';
 
+// Store quotes in memory with reference IDs
+let quoteStore = new Map();
+let quoteCounter = 0;
+
 // Initialize the swapper (for server-side operations)
 console.log('🔧 Initializing TRUE DeFi Architecture...');
 console.log('👤 Users: Sign everything in their own wallet');
@@ -253,10 +257,10 @@ app.get('/api/sdk-status', (req, res) => {
 // Get quote for swap (using real Swapper.js logic)
 app.post('/api/quote', async (req, res) => {
   try {
-    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, web3Provider } = req.body;
+    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, web3Provider, approve, approvalTxHash, quote } = req.body;
     
     console.log('🚀 /api/quote endpoint called with parameters:');
-    console.log('📋 Request body:', { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, hasWeb3Provider: !!web3Provider });
+    console.log('📋 Request body:', { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, hasWeb3Provider: !!web3Provider, approve, hasApprovalTxHash: !!approvalTxHash, hasQuote: !!quote });
     
     // Use global SDK if available, otherwise create new one
     let sdk = globalSDK;
@@ -273,25 +277,169 @@ app.post('/api/quote', async (req, res) => {
       console.log('✅ Using existing global SDK for quote request');
     }
     
-    // Import and call the getQuote function
-    const { getQuote } = require('./functions/getQuote.js');
-    
-    const quoteResult = await getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress);
-    
-    console.log('✅ Quote result from getQuote.js:', quoteResult);
+    // Handle different scenarios based on request parameters
+    if (approve && approvalTxHash && quote && quote.quoteReferenceId) {
+        // User has approved tokens and is sending the stored quote reference
+        console.log('🎉 User approved tokens - processing swap with stored quote');
+        console.log('📋 Approval transaction hash:', approvalTxHash);
+        console.log('📋 Quote reference ID:', quote.quoteReferenceId);
+        
+        // Retrieve the full quote object from memory
+        const fullQuote = quoteStore.get(quote.quoteReferenceId);
+        if (!fullQuote) {
+            console.error('❌ Quote not found in memory store:', quote.quoteReferenceId);
+            return res.status(400).json({
+                success: false,
+                error: 'Quote not found. Please try again.',
+            });
+        }
+        
+        console.log('✅ Retrieved full quote from memory store');
+        
+        try {
+            const submitOrderResult = await submitOrder(fullQuote, sdk, approve, walletAddress);
+            console.log('✅ Submit order result from submitOrder.js:', submitOrderResult);
+            
+            // Clean up the stored quote
+            quoteStore.delete(quote.quoteReferenceId);
+            console.log('🧹 Cleaned up stored quote:', quote.quoteReferenceId);
+            
+            return res.json({
+                success: true,
+                data: {
+                    quote: quote,
+                    toAmount: fullQuote.dstTokenAmount ? fullQuote.dstTokenAmount.toString() : '0',
+                    sdkCreated: !!sdk,
+                    providerType: sdk ? 'user_wallet' : 'server_fallback',
+                    globalSDKUsed: sdk === globalSDK,
+                    connectionStatus: sdkConnectionStatus,
+                    submitOrderResult: submitOrderResult,
+                    orderSubmitted: true,
+                    approvalTxHash: approvalTxHash,
+                    swapProcessed: true
+                }
+            });
+        } catch (submitError) {
+            console.error('❌ Submit order failed:', submitError);
+            return res.status(500).json({
+                success: false,
+                error: `Submit order failed: ${submitError.message}`,
+                quoteData: {
+                    quote: quote,
+                    toAmount: fullQuote.dstTokenAmount ? fullQuote.dstTokenAmount.toString() : '0'
+                }
+            });
+        }
+    } else if (approve) {
+        // Initial order creation - get quote and prepare for approval
+        console.log('🚀 User requested order creation - getting quote for approval');
+        
+        // Import and call the getQuote function
+        const { getQuote } = require('./functions/getQuote.js');
+        
+        const quoteResult = await getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress);
+        
+        console.log('✅ Quote result from getQuote.js:', quoteResult);
 
+        console.log('🚀 User requested order approval - calling submitOrder with existing quote and SDK');
+        console.log('📋 submitOrder parameters:', {
+            quote: quoteResult,
+            sdk: !!sdk,
+            approve: approve,
+            walletAddress: walletAddress
+        });
+        
+        try {
+            const submitOrderResult = await submitOrder(quoteResult, sdk, approve, walletAddress);
+            console.log('✅ Submit order result from submitOrder.js:', submitOrderResult);
+            
+            // Return the submit order result along with quote
+            return res.json({
+                success: true,
+                data: {
+                    quote: quoteResult,
+                    toAmount: quoteResult.dstTokenAmount || '0',
+                    sdkCreated: !!sdk,
+                    providerType: sdk ? 'user_wallet' : 'server_fallback',
+                    globalSDKUsed: sdk === globalSDK,
+                    connectionStatus: sdkConnectionStatus,
+                    submitOrderResult: submitOrderResult,
+                    orderSubmitted: true
+                }
+            });
+        } catch (submitError) {
+            console.error('❌ Submit order failed:', submitError);
+            return res.status(500).json({
+                success: false,
+                error: `Submit order failed: ${submitError.message}`,
+                quoteData: {
+                    quote: quoteResult,
+                    toAmount: quoteResult.dstTokenAmount || '0'
+                }
+            });
+        }
+    }
     
-    res.json({
-      success: true,
-          data: {
-          quote: quoteResult,
-          toAmount: quoteResult.dstTokenAmount || '0',
+    // Handle case where no approve parameter is provided (regular quote request)
+    if (!approve) {
+      console.log('📋 Regular quote request - getting quote without approval');
+      
+      // Import and call the getQuote function
+      const { getQuote } = require('./functions/getQuote.js');
+      
+      const quoteResult = await getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress);
+      
+      console.log('✅ Quote result from getQuote.js:', quoteResult);
+      
+      // Store the full quote object in memory with a reference ID
+      const quoteId = `quote_${++quoteCounter}`;
+      quoteStore.set(quoteId, quoteResult);
+      
+      console.log('📋 Stored quote in memory with ID:', quoteId);
+      console.log('📋 Quote store size:', quoteStore.size);
+      
+      // Helper function to convert BigInt values to strings for JSON serialization
+      const convertBigIntToString = (obj) => {
+        if (obj === null || obj === undefined) return obj;
+        
+        if (typeof obj === 'bigint') {
+          return obj.toString();
+        }
+        
+        if (Array.isArray(obj)) {
+          return obj.map(convertBigIntToString);
+        }
+        
+        if (typeof obj === 'object') {
+          const converted = {};
+          for (const [key, value] of Object.entries(obj)) {
+            converted[key] = convertBigIntToString(value);
+          }
+          return converted;
+        }
+        
+        return obj;
+      };
+
+      // Convert the entire quote object to serializable format
+      const serializedQuote = convertBigIntToString(quoteResult);
+      
+      // Add the reference ID to the serialized quote
+      serializedQuote.quoteReferenceId = quoteId;
+      
+      res.json({
+        success: true,
+        data: {
+          quote: serializedQuote,
+          quoteReferenceId: quoteId, // This is the key for retrieving the full quote
+          toAmount: serializedQuote.dstTokenAmount ? serializedQuote.dstTokenAmount.toString() : '0',
           sdkCreated: !!sdk,
           providerType: sdk ? 'user_wallet' : 'server_fallback',
           globalSDKUsed: sdk === globalSDK,
           connectionStatus: sdkConnectionStatus
         }
-    });
+      });
+    }
     
   } catch (error) {
     console.error('❌ Error in /api/quote endpoint:', error);

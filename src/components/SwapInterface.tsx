@@ -69,6 +69,7 @@ const SwapInterface = () => {
   const [approvalLoading, setApprovalLoading] = useState(false);
   const [submissionLoading, setSubmissionLoading] = useState(false);
   const [swapCompleted, setSwapCompleted] = useState(false);
+  const [currentQuote, setCurrentQuote] = useState<any>(null);
   const { toast } = useToast();
   
   // Client swapper instance
@@ -79,7 +80,20 @@ const SwapInterface = () => {
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const publicClient = usePublicClient({ chainId: parseInt(fromChain) });
-  const { writeContract } = useWriteContract();
+  const { writeContract, isPending: writeContractPending, error: writeContractError } = useWriteContract();
+
+  // Debug writeContract status
+  useEffect(() => {
+    console.log('🔍 writeContract status:', {
+      isPending: writeContractPending,
+      error: writeContractError,
+      isConnected,
+      address,
+      chainId
+    });
+  }, [writeContractPending, writeContractError, isConnected, address, chainId]);
+
+
 
   // Get token address for balance checking
   const getTokenAddressForBalance = (networkId: string, tokenSymbol: string) => {
@@ -365,6 +379,12 @@ const SwapInterface = () => {
             const humanAmount = (parseInt(quoteAmount) / Math.pow(10, toDecimals)).toString();
             setToAmount(humanAmount);
             console.log('✅ Quote received:', humanAmount, toToken);
+          } else if (data.success && data.data.toAmount) {
+            // Handle case where quote is not directly available but toAmount is
+            const toDecimals = tokenDecimals[toToken] || 18;
+            const humanAmount = (parseInt(data.data.toAmount) / Math.pow(10, toDecimals)).toString();
+            setToAmount(humanAmount);
+            console.log('✅ Quote amount received:', humanAmount, toToken);
           } else {
             console.error('Quote error:', data.error || 'No quote data received');
             setToAmount('0');
@@ -436,7 +456,8 @@ const SwapInterface = () => {
         srcTokenAddress: srcTokenAddress,
         dstTokenAddress: dstTokenAddress,
         amount: weiAmount,
-        walletAddress: address
+        walletAddress: address,
+        approve: true // Send approve: true when user clicks Create Order
       };
 
       console.log('🔄 Manual quote request with parameters:', quoteParams);
@@ -455,6 +476,15 @@ const SwapInterface = () => {
         const quoteAmount = data.data.quote.dstTokenAmount;
         const toDecimals = tokenDecimals[toToken] || 18;
         const humanAmount = (parseInt(quoteAmount) / Math.pow(10, toDecimals)).toString();
+        setToAmount(humanAmount);
+        toast({
+          title: "Quote Updated",
+          description: `Estimated output: ${humanAmount} ${toToken}`,
+        });
+      } else if (data.success && data.data.toAmount) {
+        // Handle case where quote is not directly available but toAmount is
+        const toDecimals = tokenDecimals[toToken] || 18;
+        const humanAmount = (parseInt(data.data.toAmount) / Math.pow(10, toDecimals)).toString();
         setToAmount(humanAmount);
         toast({
           title: "Quote Updated",
@@ -482,7 +512,22 @@ const SwapInterface = () => {
   };
 
   const handleSwap = async () => {
+    console.log('🚀 HANDLE SWAP FUNCTION CALLED');
+    console.log('📋 Current state:', {
+      isConnected,
+      address,
+      fromAmount,
+      toAmount,
+      fromToken,
+      toToken,
+      fromChain,
+      toChain,
+      sdkInitialized,
+      hasSufficientBalance: hasSufficientBalance()
+    });
+
     if (!isConnected || !address) {
+      console.error('❌ Wallet not connected');
       toast({
         title: "Error",
         description: "Please connect your wallet first",
@@ -534,11 +579,23 @@ const SwapInterface = () => {
     setOrderLoading(true);
     
     try {
+      console.log('🔧 Getting quote from backend for approval...');
+      
       // Get token addresses
       const srcTokenAddress = getTokenAddress(fromChain, fromToken);
       const dstTokenAddress = getTokenAddress(toChain, toToken);
       
+      console.log('🔧 Token addresses:', {
+        srcTokenAddress,
+        dstTokenAddress,
+        fromChain,
+        toChain,
+        fromToken,
+        toToken
+      });
+      
       if (!srcTokenAddress || !dstTokenAddress) {
+        console.error('❌ Token addresses not found');
         throw new Error('Token addresses not found');
       }
 
@@ -550,58 +607,65 @@ const SwapInterface = () => {
       const decimals = tokenDecimals[fromToken] || 18;
       const weiAmount = Math.floor(parseFloat(fromAmount) * Math.pow(10, decimals)).toString();
 
-      // Prepare order parameters for user wallet signature
-      const orderParams = {
+      // Get quote from backend (NO APPROVAL YET - just getting quote)
+      const quoteParams = {
         srcChainId: parseInt(fromChain),
         dstChainId: parseInt(toChain),
         srcTokenAddress: srcTokenAddress,
         dstTokenAddress: dstTokenAddress,
         amount: weiAmount,
         walletAddress: address,
-        approve: true
+        approve: false // NO APPROVAL - just getting quote
       };
 
-      console.log('🚀 Preparing order data for user wallet signature:', orderParams);
+      console.log('📡 Getting quote from backend:', quoteParams);
 
-      toast({
-        title: "Preparing Order",
-        description: "Preparing your cross-chain swap order data...",
-      });
-
-      // Prepare order data for user wallet signature
-      const response = await fetch(`${API_BASE_URL}/swap`, {
+      const response = await fetch(`${API_BASE_URL}/quote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(orderParams)
+        body: JSON.stringify(quoteParams)
       });
 
       const data = await response.json();
 
-      if (data.success) {
-        console.log('✅ Order data prepared successfully:', data.data);
+      if (data.success && data.data.quote && data.data.quote.quoteReferenceId) {
+        console.log('✅ Quote received from backend:', data.data.quote);
+        console.log('✅ Quote reference ID:', data.data.quote.quoteReferenceId);
         
-        // Store order data for approval
-        setOrderData(data.data);
+        // Store the quote data (already contains reference ID)
+        setCurrentQuote(data.data.quote);
+        
+        // Show approval modal with swap details (NO APPROVAL SENT YET)
+        setOrderData({
+          ...data.data,
+          status: 'pending_approval',
+          orderHash: 'pending_approval'
+        });
         setShowOrderModal(true);
         
         toast({
-          title: "✅ Order Data Prepared!",
-          description: `Ready for token approval and wallet signature`,
+          title: "✅ Quote Ready!",
+          description: `Please approve token spending to proceed with the swap.`,
         });
       } else {
-        throw new Error(data.error || 'Failed to prepare order data');
+        throw new Error(data.error || 'Failed to get quote');
       }
       
     } catch (error: any) {
-      console.error('Order preparation error:', error);
+      console.error('❌ Quote preparation error:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
       toast({
-        title: "Order Preparation Failed",
-        description: error.message || "Failed to prepare order data. Please try again.",
+        title: "Quote Preparation Failed",
+        description: error.message || "Failed to get quote. Please try again.",
         variant: "destructive"
       });
     } finally {
+      console.log('🔚 Setting orderLoading to false');
       setOrderLoading(false);
     }
   };
@@ -672,10 +736,34 @@ const SwapInterface = () => {
 
   // Approve tokens for swap using user's wallet
   const approveTokens = async () => {
-    if (!orderData || !orderData.orderHash) {
+    console.log('🚀 APPROVE TOKENS FUNCTION CALLED');
+    console.log('📋 Current state:', {
+      orderData: !!orderData,
+      currentQuote: !!currentQuote,
+      address: address,
+      fromChain: fromChain,
+      fromToken: fromToken,
+      fromAmount: fromAmount,
+      isConnected: isConnected
+    });
+
+    if (!orderData || !currentQuote) {
+      console.error('❌ Missing required data for approval');
+      console.error('❌ orderData:', orderData);
+      console.error('❌ currentQuote:', currentQuote);
       toast({
         title: "Error",
-        description: "No order data available for approval",
+        description: "No order data or quote available for approval",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!isConnected || !address) {
+      console.error('❌ Wallet not connected');
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet first",
         variant: "destructive"
       });
       return;
@@ -683,12 +771,27 @@ const SwapInterface = () => {
 
     setApprovalLoading(true);
     try {
-      console.log('🔐 Preparing token approval for user wallet:', orderData.orderHash);
+      console.log('🔐 Starting token approval process for user wallet');
+      console.log('📋 Order data:', orderData);
+      console.log('📋 Current quote:', currentQuote);
       
       // Get token address and amount
       const tokenAddress = getTokenAddress(fromChain, fromToken);
       const tokenDecimals = getTokenDecimals(fromToken);
       const weiAmount = Math.floor(parseFloat(fromAmount) * Math.pow(10, tokenDecimals)).toString();
+
+      console.log('🔐 Token details:', {
+        tokenAddress,
+        tokenDecimals,
+        fromAmount,
+        weiAmount,
+        fromChain,
+        fromToken
+      });
+
+      if (!tokenAddress) {
+        throw new Error(`Token address not found for ${fromToken} on chain ${fromChain}`);
+      }
 
       const approvalParams = {
         tokenAddress: tokenAddress,
@@ -706,6 +809,7 @@ const SwapInterface = () => {
       });
 
       // Get approval transaction data
+      console.log('📡 Calling /prepare-approval API...');
       const response = await fetch(`${API_BASE_URL}/prepare-approval`, {
         method: 'POST',
         headers: {
@@ -714,13 +818,17 @@ const SwapInterface = () => {
         body: JSON.stringify(approvalParams)
       });
 
+      console.log('📡 API Response status:', response.status);
       const data = await response.json();
+      console.log('📡 API Response data:', data);
 
       if (data.success) {
         console.log('✅ Approval transaction prepared:', data.data);
         
         // Send transaction to user's wallet for signature
         const approvalTx = data.data.approvalTransaction;
+        
+        console.log('🔐 Approval transaction details:', approvalTx);
         
         toast({
           title: "Approve Tokens",
@@ -729,8 +837,27 @@ const SwapInterface = () => {
 
         // Use wagmi to send the transaction
         try {
+          console.log('🔐 Parsing approval transaction data...');
           const spenderAddress = '0x' + approvalTx.data.slice(34, 74);
           const amount = BigInt('0x' + approvalTx.data.slice(74));
+          
+          console.log('🔐 Parsed transaction data:', {
+            tokenAddress: approvalTx.to,
+            spenderAddress,
+            amount: amount.toString(),
+            data: approvalTx.data
+          });
+          
+          console.log('🔐 Preparing writeContract call...');
+          console.log('🔐 writeContract parameters:', {
+            address: approvalTx.to,
+            functionName: 'approve',
+            args: [spenderAddress, amount.toString()],
+            account: address,
+            chain: parseInt(fromChain)
+          });
+          
+          console.log('🔐 Calling writeContract - this should trigger wallet popup...');
           
           const result = await writeContract({
             address: approvalTx.to as `0x${string}`,
@@ -745,22 +872,35 @@ const SwapInterface = () => {
               "payable": false,
               "stateMutability": "nonpayable",
               "type": "function"
-            }],
+            }] as const,
             functionName: 'approve',
-            args: [spenderAddress as `0x${string}`, amount]
+            args: [spenderAddress as `0x${string}`, amount],
+            account: address,
+            chain: parseInt(fromChain) as any
           });
 
           console.log('✅ Token approval transaction sent:', result);
+          console.log('✅ Transaction hash:', result);
+          
+          // Set approval status to true
+          setIsApproved(true);
           
           toast({
             title: "✅ Tokens Approved!",
-            description: "Token approval completed successfully",
+            description: "Token approval completed successfully. Processing swap...",
           });
 
-          // After approval, automatically complete the swap
-          await completeSwap(result);
+          // Now send the approval status to backend with quote data
+          console.log('🎉 Token approval successful - now sending data to backend');
+          await processApprovedSwap(result);
+
         } catch (walletError: any) {
           console.error('❌ Wallet transaction failed:', walletError);
+          console.error('❌ Error details:', {
+            message: walletError.message,
+            code: walletError.code,
+            stack: walletError.stack
+          });
           toast({
             title: "Wallet Transaction Failed",
             description: walletError.message || "Failed to send approval transaction",
@@ -768,10 +908,15 @@ const SwapInterface = () => {
           });
         }
       } else {
+        console.error('❌ API call failed:', data.error);
         throw new Error(data.error || 'Failed to prepare approval');
       }
     } catch (error: any) {
       console.error('❌ Token approval failed:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
       toast({
         title: "Approval Failed",
         description: error.message || "Failed to approve tokens. Please try again.",
@@ -779,6 +924,130 @@ const SwapInterface = () => {
       });
     } finally {
       setApprovalLoading(false);
+    }
+  };
+
+  // Process approved swap with stored quote data
+  const processApprovedSwap = async (approvalTxResult: any) => {
+    if (!currentQuote || !address) {
+      console.error('❌ Missing required data for swap processing');
+      console.error('❌ currentQuote:', currentQuote);
+      console.error('❌ address:', address);
+      toast({
+        title: "Error",
+        description: "No quote data or wallet address available",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if we have a proper quote object with reference ID
+    if (!currentQuote.quoteReferenceId) {
+      console.error('❌ Quote object missing reference ID');
+      console.error('❌ Quote object:', currentQuote);
+      toast({
+        title: "Invalid Quote",
+        description: "Quote data is invalid. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    console.log('✅ Quote object has reference ID:', currentQuote.quoteReferenceId);
+
+    setSubmissionLoading(true);
+    try {
+      console.log('🎉 Processing approved swap with stored quote data');
+      console.log('📋 Approval transaction result:', approvalTxResult);
+      console.log('📋 Stored quote has getPreset method:', !!currentQuote.getPreset);
+      
+      // Use the stored quote data with reference ID
+      const swapParams = {
+        srcChainId: parseInt(fromChain),
+        dstChainId: parseInt(toChain),
+        srcTokenAddress: getTokenAddress(fromChain, fromToken),
+        dstTokenAddress: getTokenAddress(toChain, toToken),
+        amount: Math.floor(parseFloat(fromAmount) * Math.pow(10, getTokenDecimals(fromToken))).toString(),
+        walletAddress: address,
+        approve: true, // Send approval status
+        approvalTxHash: approvalTxResult,
+        quote: currentQuote // Include the quote with reference ID
+      };
+
+      console.log('🚀 Sending approved swap request to backend:', {
+        ...swapParams,
+        quote: 'REAL_QUOTE_OBJECT_WITH_GETPRESET'
+      });
+
+      toast({
+        title: "Processing Swap",
+        description: "Submitting approved swap to backend...",
+      });
+
+      const response = await fetch(`${API_BASE_URL}/quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(swapParams)
+      });
+
+      console.log('📡 Backend response status:', response.status);
+      const data = await response.json();
+      console.log('📡 Backend response data:', data);
+
+      if (data.success) {
+        console.log('✅ Approved swap processed successfully:', data.data);
+        
+        // Update order data with swap progress
+        setOrderData(prev => ({
+          ...prev,
+          status: 'swap_in_progress',
+          approvalTxHash: approvalTxResult,
+          swapResult: data.data.submitOrderResult
+        }));
+
+        toast({
+          title: "🔄 Swap in Progress",
+          description: "Your cross-chain swap is being processed. This may take a few minutes.",
+        });
+
+        // Wait for swap completion (submitOrder.js handles this)
+        setTimeout(() => {
+          setSwapCompleted(true);
+          setShowOrderModal(false);
+          
+          toast({
+            title: "🎉 Swap Completed!",
+            description: "Your cross-chain swap has been executed successfully!",
+          });
+
+          // Reset form
+          setFromAmount('');
+          setToAmount('');
+          setOrderData(null);
+          setOrderStatus(null);
+          setCurrentQuote(null);
+          setIsApproved(false);
+        }, 3000); // Simulate completion after 3 seconds
+
+      } else {
+        console.error('❌ Backend processing failed:', data.error);
+        throw new Error(data.error || 'Failed to process approved swap');
+      }
+    } catch (error: any) {
+      console.error('❌ Approved swap processing failed:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      toast({
+        title: "Swap Processing Failed",
+        description: error.message || "Failed to process approved swap. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setSubmissionLoading(false);
     }
   };
 
@@ -1107,7 +1376,18 @@ const SwapInterface = () => {
 
                 {/* Swap Button */}
                 <Button
-                  onClick={handleSwap}
+                  onClick={() => {
+                    console.log('🔘 CONFIRM SWAP BUTTON CLICKED');
+                    console.log('🔘 Button state:', {
+                      isConnected,
+                      hasFromAmount: !!fromAmount,
+                      hasToAmount: !!toAmount,
+                      orderLoading,
+                      hasSufficientBalance: hasSufficientBalance(),
+                      sdkInitialized
+                    });
+                    handleSwap();
+                  }}
                   disabled={!isConnected || !fromAmount || !toAmount || orderLoading || !hasSufficientBalance() || !sdkInitialized}
                   className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
                 >
@@ -1133,7 +1413,7 @@ const SwapInterface = () => {
                       Connecting SDK...
                     </>
                   ) : (
-                    `Create Order: ${fromAmount} ${fromToken} → ${toAmount} ${toToken}`
+                    `Get Quote & Review: ${fromAmount} ${fromToken} → ${toAmount} ${toToken}`
                   )}
                 </Button>
               </CardContent>
@@ -1255,6 +1535,24 @@ const SwapInterface = () => {
                           </Badge>
                         </div>
                       )}
+                      {orderData?.status === 'swap_in_progress' && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Swap Status:</span>
+                          <Badge className="bg-warning/20 text-warning border-warning/30">
+                            <Loader2 className="inline mr-1 h-3 w-3 animate-spin" />
+                            Processing...
+                          </Badge>
+                        </div>
+                      )}
+                      {isApproved && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Approval Status:</span>
+                          <Badge className="bg-success/20 text-success border-success/30">
+                            <CheckCircle className="inline mr-1 h-3 w-3" />
+                            Approved
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1276,8 +1574,16 @@ const SwapInterface = () => {
                 {/* Action Buttons */}
                 <div className="flex space-x-3">
                   <Button
-                    onClick={approveTokens}
-                    disabled={approvalLoading || submissionLoading}
+                    onClick={() => {
+                      console.log('🔘 APPROVE TOKENS BUTTON CLICKED');
+                      console.log('🔘 Button state:', {
+                        approvalLoading,
+                        submissionLoading,
+                        swapInProgress: orderData?.status === 'swap_in_progress'
+                      });
+                      approveTokens();
+                    }}
+                    disabled={approvalLoading || submissionLoading || orderData?.status === 'swap_in_progress'}
                     className="flex-1 bg-gradient-primary hover:opacity-90 disabled:opacity-50"
                   >
                     {approvalLoading ? (
@@ -1290,10 +1596,15 @@ const SwapInterface = () => {
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Executing...
                       </>
+                    ) : orderData?.status === 'swap_in_progress' ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Swap in Progress...
+                      </>
                     ) : (
                       <>
                         <Shield className="mr-2 h-4 w-4" />
-                        Approve & Execute Swap
+                        Approve Tokens
                       </>
                     )}
                   </Button>
@@ -1307,6 +1618,8 @@ const SwapInterface = () => {
                     Cancel
                   </Button>
                 </div>
+
+
 
                 {/* Order Status */}
                 <div className="text-center">
