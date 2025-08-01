@@ -2,7 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
-
+// Import the getQuote function
+const { getQuote } = require('./functions/getQuote.js');
 // Import the real Swapper logic
 const { CrossChainSwapper, NETWORKS, TOKENS } = require('./functions/Swapper.js');
 
@@ -178,164 +179,34 @@ app.get('/api/tokens/:networkName', (req, res) => {
 // Get quote for swap (using real Swapper.js logic)
 app.post('/api/quote', async (req, res) => {
   try {
-    const { fromChainId, toChainId, fromToken, toToken, amount, walletAddress } = req.body;
+    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress } = req.body;
     
-    if (!fromChainId || !toChainId || !fromToken || !toToken || !amount || !walletAddress) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required parameters'
-      });
-    }
-
-    // Find network names from chain IDs
-    const fromNetwork = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(fromChainId));
-    const toNetwork = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(toChainId));
+    console.log('🚀 /api/quote endpoint called with parameters:');
+    console.log('📋 Request body:', req.body);
+    console.log('📋 srcChainId:', srcChainId);
+    console.log('📋 dstChainId:', dstChainId);
+    console.log('📋 srcTokenAddress:', srcTokenAddress);
+    console.log('📋 dstTokenAddress:', dstTokenAddress);
+    console.log('📋 amount:', amount);
+    console.log('📋 walletAddress:', walletAddress);
     
-    if (!fromNetwork || !toNetwork) {
-      return res.status(400).json({
-        success: false,
-        error: 'Unsupported network chain ID'
-      });
-    }
-
-    console.log(`🔍 Getting quote: ${amount} ${fromToken} on ${fromNetwork} to ${toToken} on ${toNetwork}`);
-
-    // Convert amount to wei for API call
-    const tokenDecimals = {
-      'USDC': 6, 'USDT': 6, 'DAI': 18, 'WETH': 18, 'WBTC': 8,
-      'ETH': 18, 'MATIC': 18, 'BNB': 18, 'AVAX': 18, 'OP': 18, 'FTM': 18
-    };
-    const decimals = tokenDecimals[fromToken] || 18;
-    const weiAmount = Math.floor(parseFloat(amount) * Math.pow(10, decimals)).toString();
-
-    // Get quote from 1inch Fusion SDK
-    if (process.env.DEV_PORTAL_KEY) {
-      try {
-        console.log('🔍 Using 1inch Fusion SDK for quote...');
-        console.log('📋 Quote parameters:', {
-          fromChainId,
-          toChainId,
-          fromToken,
-          toToken,
-          amount: weiAmount,
-          walletAddress
-        });
-
-        // Initialize 1inch Fusion SDK
-        const sdk = new SDK({
-          url: "https://api.1inch.dev/fusion-plus",
-          authKey: process.env.DEV_PORTAL_KEY,
-        });
-
-        // Map chain IDs to NetworkEnum
-        const chainIdToNetwork = {
-          1: NetworkEnum.ETHEREUM,
-          10: NetworkEnum.OPTIMISM,
-          56: NetworkEnum.BSC,
-          137: NetworkEnum.POLYGON,
-          250: NetworkEnum.FANTOM,
-          42161: NetworkEnum.ARBITRUM,
-          43114: NetworkEnum.AVALANCHE,
-          8453: NetworkEnum.BASE,
-          100: NetworkEnum.GNOSIS
-        };
-
-        const srcChainId = chainIdToNetwork[parseInt(fromChainId)];
-        const dstChainId = chainIdToNetwork[parseInt(toChainId)];
-
-        if (!srcChainId || !dstChainId) {
-          throw new Error(`Unsupported chain ID: ${fromChainId} or ${toChainId}`);
-        }
-
-        // Get token addresses from TOKENS mapping
-        const srcTokenAddress = TOKENS[fromNetwork]?.[fromToken];
-        const dstTokenAddress = TOKENS[toNetwork]?.[toToken];
-
-        if (!srcTokenAddress || !dstTokenAddress) {
-          throw new Error(`Token not found: ${fromToken} on ${fromNetwork} or ${toToken} on ${toNetwork}`);
-        }
-
-        console.log('🔗 Token addresses:', {
-          srcTokenAddress,
-          dstTokenAddress
-        });
-
-        // Create quote parameters
-        const params = {
-          srcChainId,
-          dstChainId,
-          srcTokenAddress,
-          dstTokenAddress,
-          amount: weiAmount,
-          walletAddress,
-        };
-
-        console.log('🚀 Quote parameters:', params);
-
-        console.log('🚀 Calling 1inch Fusion SDK getQuote...');
-        const quote = await sdk.getQuote(params);
-        
-        console.log('✅ Quote received from 1inch Fusion SDK:');
-        
-        // Custom serializer to handle BigInt values
-        const serializeQuote = (obj) => {
-          return JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'bigint') {
-              return value.toString();
-            }
-            return value;
-          }, 2);
-        };
-        
-        console.log('📊 Quote data:', serializeQuote(quote));
-
-        if (quote && quote.dstAmount) {
-          const outputDecimals = tokenDecimals[toToken] || 18;
-          const humanOutput = (BigInt(quote.dstAmount) / BigInt(Math.pow(10, outputDecimals))).toString();
-          
-          console.log(`📊 Estimated output: ${humanOutput} ${toToken}`);
-          
-          res.json({
-            success: true,
-            data: {
-              fromAmount: amount,
-              toAmount: humanOutput,
-              fromToken,
-              toToken,
-              fromChain: fromChainId,
-              toChain: toChainId,
-              estimatedGas: quote.estimatedGas || '0',
-              quote: quote
-            }
-          });
-          return;
-        } else {
-          console.log('❌ No valid quote data received');
-          throw new Error('No valid quote data received from 1inch Fusion SDK');
-        }
-      } catch (error) {
-        console.error('❌ 1inch Fusion SDK Error:');
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Error details:', error);
-        
-        return res.status(500).json({
-          success: false,
-          error: '1inch Fusion SDK failed',
-          details: error.message,
-          message: 'Cannot provide quote without valid API response'
-        });
+    // Import and call the getQuote function
+    const { getQuote } = require('./functions/getQuote.js');
+    
+    const quote = await getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress);
+    
+    console.log('✅ Quote result from getQuote.js:', quote);
+    
+    res.json({
+      success: true,
+      data: {
+        quote: quote,
+        toAmount: quote?.toAmount || '0'
       }
-    }
-    
-    // If we reach here, no quote was obtained
-    return res.status(500).json({
-      success: false,
-      error: 'No quote available',
-      message: 'TRUE DeFi API did not return a valid quote'
     });
     
   } catch (error) {
-    console.error('Error getting quote:', error);
+    console.error('❌ Error in /api/quote endpoint:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get quote'
