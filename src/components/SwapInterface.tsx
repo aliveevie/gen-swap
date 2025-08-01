@@ -869,8 +869,6 @@ const SwapInterface = () => {
               ],
               "name": "approve",
               "outputs": [{ "name": "", "type": "bool" }],
-              "payable": false,
-              "stateMutability": "nonpayable",
               "type": "function"
             }] as const,
             functionName: 'approve',
@@ -879,7 +877,25 @@ const SwapInterface = () => {
             chain: parseInt(fromChain) as any
           });
 
-          console.log('✅ Token approval transaction sent:', result);
+          console.log('✅ Token approval transaction sent to wallet:', result);
+          console.log('⏳ Waiting for transaction confirmation on blockchain...');
+          
+          toast({
+            title: "⏳ Transaction Pending",
+            description: "Waiting for blockchain confirmation. Please wait...",
+          });
+          
+          // Wait for the transaction to be confirmed on the blockchain
+          const transactionReceipt = await publicClient.waitForTransactionReceipt({
+            hash: result,
+            confirmations: 1
+          });
+
+          console.log('✅ Transaction confirmed on blockchain:', transactionReceipt);
+          
+          if (transactionReceipt.status === 'reverted') {
+            throw new Error('Transaction was reverted on the blockchain');
+          }
           console.log('✅ Transaction hash:', result);
           
           // Set approval status to true
@@ -887,11 +903,11 @@ const SwapInterface = () => {
           
           toast({
             title: "✅ Tokens Approved!",
-            description: "Token approval completed successfully. Processing swap...",
+            description: "Token approval confirmed on blockchain. Processing swap...",
           });
 
           // Now send the approval status to backend with quote data
-          console.log('🎉 Token approval successful - now sending data to backend');
+          console.log('🎉 Token approval confirmed - now sending data to backend');
           await processApprovedSwap(result);
 
         } catch (walletError: any) {
@@ -901,9 +917,10 @@ const SwapInterface = () => {
             code: walletError.code,
             stack: walletError.stack
           });
+          console.log('🚫 NO DATA SENT TO BACKEND - Wallet approval failed');
           toast({
             title: "Wallet Transaction Failed",
-            description: walletError.message || "Failed to send approval transaction",
+            description: walletError.message || "Failed to send approval transaction. No data was sent to backend.",
             variant: "destructive"
           });
         }
@@ -917,9 +934,10 @@ const SwapInterface = () => {
         message: error.message,
         stack: error.stack
       });
+      console.log('🚫 NO DATA SENT TO BACKEND - Approval preparation failed');
       toast({
         title: "Approval Failed",
-        description: error.message || "Failed to approve tokens. Please try again.",
+        description: error.message || "Failed to approve tokens. No data was sent to backend. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -971,13 +989,17 @@ const SwapInterface = () => {
         walletAddress: address,
         approve: true, // Send approval status
         approvalTxHash: approvalTxResult,
-        quote: currentQuote // Include the quote with reference ID
+        quote: {
+          quoteReferenceId: currentQuote.quoteReferenceId
+        } // Only send the reference ID, not the full quote object
       };
 
       console.log('🚀 Sending approved swap request to backend:', {
         ...swapParams,
-        quote: 'REAL_QUOTE_OBJECT_WITH_GETPRESET'
+        quote: { quoteReferenceId: currentQuote.quoteReferenceId }
       });
+
+      console.log('✅ SENDING DATA TO BACKEND - User approved tokens successfully');
 
       toast({
         title: "Processing Swap",
@@ -1041,9 +1063,10 @@ const SwapInterface = () => {
         message: error.message,
         stack: error.stack
       });
+      console.log('🚫 NO DATA SENT TO BACKEND - Swap processing failed');
       toast({
         title: "Swap Processing Failed",
-        description: error.message || "Failed to process approved swap. Please try again.",
+        description: error.message || "Failed to process approved swap. No data was sent to backend. Please try again.",
         variant: "destructive"
       });
     } finally {
