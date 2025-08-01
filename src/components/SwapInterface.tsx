@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount, useChainId, useSwitchChain, useBalance } from 'wagmi';
+import { useAccount, useChainId, useSwitchChain, useBalance, usePublicClient } from 'wagmi';
 import WalletConnector from "./WalletConnector";
 import { ClientSwapper } from "@/lib/clientSwapper";
 
@@ -56,6 +56,8 @@ const SwapInterface = () => {
   const [txHash, setTxHash] = useState("");
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
+  const [sdkInitialized, setSdkInitialized] = useState(false);
+  const [sdkLoading, setSdkLoading] = useState(false);
   const { toast } = useToast();
   
   // Client swapper instance
@@ -65,6 +67,7 @@ const SwapInterface = () => {
   const { isConnected, address } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
+  const publicClient = usePublicClient({ chainId: parseInt(fromChain) });
 
   // Get token address for balance checking
   const getTokenAddressForBalance = (networkId: string, tokenSymbol: string) => {
@@ -209,15 +212,79 @@ const SwapInterface = () => {
     }
   }, [fromToken, fromChain, isConnected, address, refetchBalance]);
 
-  // Handle wallet connection status changes
+  // Initialize SDK when wallet connects
+  const initializeSDK = async () => {
+    if (!isConnected || !address) return;
+    
+    setSdkLoading(true);
+    try {
+      console.log('🔧 Initializing 1inch SDK with user wallet...');
+      
+      // Use the public client from wagmi hook
+      if (!publicClient) {
+        throw new Error('Public client not available');
+      }
+      
+      // Create Web3 provider from public client
+      const web3Provider = {
+        provider: publicClient,
+        chainId: parseInt(fromChain),
+        address: address
+      };
+      
+      console.log('📡 Sending Web3 provider to backend for SDK initialization...');
+      
+      const response = await fetch(`${API_BASE_URL}/test-sdk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          web3Provider: web3Provider,
+          nodeUrl: publicClient.transport.url || 'user_wallet_provider'
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('✅ SDK initialized successfully with user wallet');
+        setSdkInitialized(true);
+        toast({
+          title: "SDK Connected",
+          description: "1inch SDK initialized with your wallet",
+        });
+      } else {
+        throw new Error(data.error || 'Failed to initialize SDK');
+      }
+      
+    } catch (error) {
+      console.error('❌ SDK initialization failed:', error);
+      setSdkInitialized(false);
+      toast({
+        title: "SDK Connection Failed",
+        description: error.message || "Failed to connect 1inch SDK",
+        variant: "destructive"
+      });
+    } finally {
+      setSdkLoading(false);
+    }
+  };
+
+  // Handle wallet connection status changes and SDK initialization
   useEffect(() => {
     if (isConnected && address) {
       toast({
         title: "Wallet Connected",
         description: `Connected to ${address.slice(0, 6)}...${address.slice(-4)}`,
       });
+      
+      // Initialize SDK after wallet connection
+      initializeSDK();
+    } else {
+      setSdkInitialized(false);
     }
-  }, [isConnected, address, toast]);
+  }, [isConnected, address, fromChain]);
 
   // Automatic quote fetching when parameters change
   useEffect(() => {
@@ -605,7 +672,25 @@ const SwapInterface = () => {
             <Card className="bg-gradient-card backdrop-blur-sm border-border/50 shadow-card">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>TRUE DeFi Swap Tokens</span>
+                  <div className="flex items-center space-x-3">
+                    <span>TRUE DeFi Swap Tokens</span>
+                    {sdkLoading ? (
+                      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Connecting SDK...</span>
+                      </div>
+                    ) : sdkInitialized ? (
+                      <div className="flex items-center space-x-2 text-sm text-success">
+                        <CheckCircle className="h-4 w-4" />
+                        <span>SDK Connected</span>
+                      </div>
+                    ) : isConnected ? (
+                      <div className="flex items-center space-x-2 text-sm text-warning">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>SDK Disconnected</span>
+                      </div>
+                    ) : null}
+                  </div>
                   <Button 
                     variant="ghost" 
                     size="sm"
@@ -777,7 +862,7 @@ const SwapInterface = () => {
                 {/* Swap Button */}
                 <Button
                   onClick={handleSwap}
-                  disabled={!isConnected || !fromAmount || !toAmount || isLoading || !hasSufficientBalance()}
+                  disabled={!isConnected || !fromAmount || !toAmount || isLoading || !hasSufficientBalance() || !sdkInitialized}
                   className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
                 >
                   {isLoading ? (
@@ -795,6 +880,11 @@ const SwapInterface = () => {
                     <>
                       <AlertTriangle className="mr-2 h-5 w-5" />
                       Insufficient Balance
+                    </>
+                  ) : !sdkInitialized ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Connecting SDK...
                     </>
                   ) : (
                     `Swap ${fromAmount} ${fromToken} for ${toAmount} ${toToken}`

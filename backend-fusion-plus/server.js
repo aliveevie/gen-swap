@@ -7,8 +7,8 @@ const { getQuote } = require('./functions/getQuote.js');
 // Import the real Swapper logic
 const { CrossChainSwapper, NETWORKS, TOKENS } = require('./functions/Swapper.js');
 
-// Import 1inch Fusion SDK
-const { SDK, NetworkEnum } = require('@1inch/cross-chain-sdk');
+// Import provider functions for TRUE DeFi SDK creation
+const { createSDKWithProvider, getAuthKey, validateSDK } = require('./functions/createProvider.js');
 
 const app = express();
 const PORT = process.env.PORT || 9056;
@@ -16,6 +16,10 @@ const PORT = process.env.PORT || 9056;
 // Basic middleware
 app.use(cors());
 app.use(express.json());
+
+// Global SDK instance (like a database connection)
+let globalSDK = null;
+let sdkConnectionStatus = 'disconnected';
 
 // Initialize the swapper (for server-side operations)
 console.log('🔧 Initializing TRUE DeFi Architecture...');
@@ -26,8 +30,10 @@ console.log('❌ NO private keys stored on server');
 if (!process.env.DEV_PORTAL_KEY) {
   console.log('⚠️  DEV_PORTAL_KEY missing - swapping disabled');
   console.log('💡 Get your API key from https://portal.1inch.dev/');
-  } else {
+  sdkConnectionStatus = 'no_auth_key';
+} else {
   console.log('✅ DEV_PORTAL_KEY configured - TRUE DeFi swapping enabled');
+  sdkConnectionStatus = 'ready_for_connection';
 }
 
 // Helper functions
@@ -176,19 +182,91 @@ app.get('/api/tokens/:networkName', (req, res) => {
   }
 });
 
+// Initialize SDK connection with user's Web3 provider (like DB connection)
+app.post('/api/test-sdk', async (req, res) => {
+  try {
+    const { web3Provider, nodeUrl } = req.body;
+    
+    console.log('🔌 Initializing SDK connection with user wallet provider...');
+    console.log('📋 Request body:', { hasWeb3Provider: !!web3Provider, nodeUrl });
+    
+    if (!web3Provider) {
+      return res.status(400).json({
+        success: false,
+        error: 'Web3 provider is required'
+      });
+    }
+
+    // Create SDK with user's provider and store globally
+    globalSDK = createSDKWithProvider(web3Provider);
+    sdkConnectionStatus = 'connected';
+    
+    console.log('✅ SDK connection established successfully');
+    console.log('🔗 Global SDK instance created and stored');
+    console.log('📊 SDK Status:', sdkConnectionStatus);
+    
+    res.json({
+      success: true,
+      message: 'SDK connection established with user wallet provider',
+      data: {
+        sdkCreated: true,
+        hasGetQuote: typeof globalSDK.getQuote === 'function',
+        providerType: 'user_wallet',
+        authKeyConfigured: !!getAuthKey(),
+        connectionStatus: sdkConnectionStatus,
+        globalInstance: true
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ SDK connection failed:', error.message);
+    globalSDK = null;
+    sdkConnectionStatus = 'connection_failed';
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to establish SDK connection',
+      details: 'Check DEV_PORTAL_KEY configuration and user provider',
+      connectionStatus: sdkConnectionStatus
+    });
+  }
+});
+
+// Get SDK connection status
+app.get('/api/sdk-status', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      connectionStatus: sdkConnectionStatus,
+      hasGlobalSDK: !!globalSDK,
+      authKeyConfigured: !!getAuthKey(),
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
 // Get quote for swap (using real Swapper.js logic)
 app.post('/api/quote', async (req, res) => {
   try {
-  const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress } = req.body;
+    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, web3Provider } = req.body;
     
     console.log('🚀 /api/quote endpoint called with parameters:');
-    console.log('📋 Request body:', req.body);
-    console.log('📋 srcChainId:', srcChainId);
-    console.log('📋 dstChainId:', dstChainId);
-    console.log('📋 srcTokenAddress:', srcTokenAddress);
-    console.log('📋 dstTokenAddress:', dstTokenAddress);
-    console.log('📋 amount:', amount);
-    console.log('📋 walletAddress:', walletAddress);
+    console.log('📋 Request body:', { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, hasWeb3Provider: !!web3Provider });
+    
+    // Use global SDK if available, otherwise create new one
+    let sdk = globalSDK;
+    if (!sdk && web3Provider) {
+      try {
+        console.log('🔧 Creating new SDK with user wallet provider for quote...');
+        sdk = createSDKWithProvider(web3Provider);
+        console.log('✅ New SDK created successfully for quote request');
+      } catch (sdkError) {
+        console.error('❌ SDK creation failed for quote:', sdkError.message);
+        // Continue with existing getQuote function as fallback
+      }
+    } else if (sdk) {
+      console.log('✅ Using existing global SDK for quote request');
+    }
     
     // Import and call the getQuote function
     const { getQuote } = require('./functions/getQuote.js');
@@ -199,10 +277,14 @@ app.post('/api/quote', async (req, res) => {
     
     res.json({
       success: true,
-      data: {
-        quote: quoteResult,
-        toAmount: quoteResult.dstTokenAmount || '0'
-      }
+              data: {
+          quote: quoteResult,
+          toAmount: quoteResult.dstTokenAmount || '0',
+          sdkCreated: !!sdk,
+          providerType: sdk ? 'user_wallet' : 'server_fallback',
+          globalSDKUsed: sdk === globalSDK,
+          connectionStatus: sdkConnectionStatus
+        }
     });
     
   } catch (error) {
@@ -636,10 +718,14 @@ app.listen(PORT, () => {
   console.log(`🚀 GenSwap TRUE DeFi API Server running on port ${PORT}`);
   console.log(`📡 API Base URL: http://localhost:${PORT}/api`);
   console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
+  console.log(`🔌 SDK Connection: http://localhost:${PORT}/api/test-sdk`);
+  console.log(`📊 SDK Status: http://localhost:${PORT}/api/sdk-status`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
   console.log(`🔧 TRUE DeFi Status: ${process.env.DEV_PORTAL_KEY ? '✅ Ready for swaps' : '⚠️  DEV_PORTAL_KEY required'}`);
   console.log(`👤 User Role: Sign ALL transactions in their own wallet`);
   console.log(`🔐 Server Role: API access ONLY (NO private keys)`);
+  console.log(`🔧 Provider System: User wallet integration ready`);
+  console.log(`🔗 SDK Connection: ${sdkConnectionStatus} (like database connection)`);
 });
 
 module.exports = app;
