@@ -44,19 +44,46 @@ function submitOrder(quote, approve, walletAddress, eip712Signature, userRpcUrl)
         ...baseProvider,
         signTypedData: async (address, domain, types, value) => {
             console.log('🔐 Custom provider signTypedData called with:', { address, domain, types, value });
-            console.log('🔐 Using pre-signed EIP-712 data instead');
+            console.log('🔐 Domain:', domain);
+            console.log('🔐 Types:', types);
+            console.log('🔐 Value:', value);
+            console.log('🔐 Using pre-signed EIP-712 signature:', eip712Signature);
+            
+            // Capture the exact data the SDK is trying to sign
+            console.log('🔐 SDK is requesting signature for:');
+            console.log('🔐 Address:', address);
+            console.log('🔐 Domain:', JSON.stringify(domain, null, 2));
+            console.log('🔐 Types:', JSON.stringify(types, null, 2));
+            console.log('🔐 Value:', JSON.stringify(value, null, 2));
+            
             if (!eip712Signature) {
-                throw new Error('EIP-712 signature is required for order placement');
+                // For debugging, let's throw an error with the exact data needed
+                throw new Error(`EIP-712 signature required. Please sign this data: Address=${address}, Domain=${JSON.stringify(domain)}, Types=${JSON.stringify(types)}, Value=${JSON.stringify(value)}`);
             }
+            
+            console.log('✅ Using provided EIP-712 signature:', eip712Signature.substring(0, 20) + '...');
             return eip712Signature;
         },
         getSigner: () => ({
             signTypedData: async (domain, types, value) => {
                 console.log('🔐 Custom signer signTypedData called with:', { domain, types, value });
-                console.log('🔐 Using pre-signed EIP-712 data instead');
+                console.log('🔐 Domain:', domain);
+                console.log('🔐 Types:', types);
+                console.log('🔐 Value:', value);
+                console.log('🔐 Using pre-signed EIP-712 signature:', eip712Signature);
+                
+                // Capture the exact data the SDK is trying to sign
+                console.log('🔐 SDK is requesting signature for:');
+                console.log('🔐 Domain:', JSON.stringify(domain, null, 2));
+                console.log('🔐 Types:', JSON.stringify(types, null, 2));
+                console.log('🔐 Value:', JSON.stringify(value, null, 2));
+                
                 if (!eip712Signature) {
-                    throw new Error('EIP-712 signature is required for order placement');
+                    // For debugging, let's throw an error with the exact data needed
+                    throw new Error(`EIP-712 signature required. Please sign this data: Domain=${JSON.stringify(domain)}, Types=${JSON.stringify(types)}, Value=${JSON.stringify(value)}`);
                 }
+                
+                console.log('✅ Using provided EIP-712 signature:', eip712Signature.substring(0, 20) + '...');
                 return eip712Signature;
             },
             getAddress: async () => walletAddress

@@ -1033,49 +1033,54 @@ const SwapInterface = () => {
         throw new Error('No wallet provider available');
       }
 
-      // Create the EIP-712 domain and types for 1inch order
+      // Use the exact EIP-712 structure from the 1inch SDK
       const domain = {
-        name: '1inch',
-        version: '1',
+        name: '1inch Aggregation Router',
+        version: '6',
         chainId: parseInt(fromChain),
-        verifyingContract: '0x1111111254EEB25477B68fb85Ed929f73A960582' // 1inch router
+        verifyingContract: '0x111111125421ca6dc452d289314280a0f8842a65'
       };
 
       const types = {
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' }
+        ],
         Order: [
           { name: 'salt', type: 'uint256' },
-          { name: 'makerAsset', type: 'address' },
-          { name: 'takerAsset', type: 'address' },
           { name: 'maker', type: 'address' },
           { name: 'receiver', type: 'address' },
-          { name: 'allowedSender', type: 'address' },
+          { name: 'makerAsset', type: 'address' },
+          { name: 'takerAsset', type: 'address' },
           { name: 'makingAmount', type: 'uint256' },
           { name: 'takingAmount', type: 'uint256' },
-          { name: 'offsets', type: 'uint256' },
-          { name: 'interactions', type: 'bytes' }
+          { name: 'makerTraits', type: 'uint256' }
         ]
       };
 
-      // Create the order data (this will be filled by the backend)
-      const value = {
-        salt: '0', // Will be set by backend
+      // Generate a random salt for the order (this should be unique per order)
+      const salt = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
+      
+      // Create the order data using the exact structure from the SDK
+      const message = {
+        salt: salt,
+        maker: address,
+        receiver: '0x0000000000000000000000000000000000000000',
         makerAsset: getTokenAddress(fromChain, fromToken),
         takerAsset: getTokenAddress(toChain, toToken),
-        maker: address,
-        receiver: address,
-        allowedSender: '0x0000000000000000000000000000000000000000',
         makingAmount: Math.floor(parseFloat(fromAmount) * Math.pow(10, getTokenDecimals(fromToken))).toString(),
-        takingAmount: '0', // Will be set by backend
-        offsets: '0',
-        interactions: '0x'
+        takingAmount: currentQuote?.dstTokenAmount || '0',
+        makerTraits: '62419173104490761595518734106364469839019469472311288259522377282303131910144' // Default makerTraits
       };
 
-      console.log('🔐 EIP-712 data to sign:', { domain, types, value });
+      console.log('🔐 EIP-712 data to sign:', { domain, types, message });
 
       // Request signature from wallet
       const signature = await window.ethereum.request({
         method: 'eth_signTypedData_v4',
-        params: [address, JSON.stringify({ domain, types, primaryType: 'Order', message: value })]
+        params: [address, JSON.stringify({ domain, types, primaryType: 'Order', message })]
       });
 
       console.log('✅ EIP-712 signature received:', signature);
@@ -1085,8 +1090,9 @@ const SwapInterface = () => {
         description: "Order data signed successfully. Submitting to backend...",
       });
 
-      // Now send the signed data to backend
-      await processApprovedSwap(approvalTxResult, signature);
+      // For debugging, let's not send the signature yet to see what the SDK expects
+      console.log('🔐 Captured signature but not sending to backend for debugging');
+      await processApprovedSwap(approvalTxResult, undefined);
 
     } catch (error: any) {
       console.error('❌ EIP-712 signing failed:', error);
