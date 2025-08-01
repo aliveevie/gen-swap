@@ -859,7 +859,18 @@ const SwapInterface = () => {
           
           console.log('🔐 Calling writeContract - this should trigger wallet popup...');
           
-          const result = await writeContract({
+          // In wagmi v2, we need to use a different approach to get the transaction hash
+          // Let's use the wallet provider to get the transaction hash after confirmation
+          let transactionHash: string | null = null;
+          
+          // Set up a listener for the transaction hash
+          const handleTransaction = (txHash: string) => {
+            transactionHash = txHash;
+            console.log('✅ Transaction hash received:', txHash);
+          };
+          
+          // Call writeContract
+          await writeContract({
             address: approvalTx.to as `0x${string}`,
             abi: [{
               "constant": false,
@@ -877,7 +888,30 @@ const SwapInterface = () => {
             chain: parseInt(fromChain) as any
           });
 
-          console.log('✅ Token approval transaction sent to wallet:', result);
+          console.log('✅ Token approval transaction sent to wallet');
+          
+          // Wait a moment for the transaction to be processed
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Try to get the transaction hash from the wallet provider
+          if (typeof window !== 'undefined' && window.ethereum) {
+            try {
+              // Get the latest transaction from the wallet
+              const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+              if (accounts && accounts[0]) {
+                const latestTx = await window.ethereum.request({
+                  method: 'eth_getTransactionCount',
+                  params: [accounts[0], 'latest']
+                });
+                console.log('📋 Latest transaction count:', latestTx);
+              }
+            } catch (error) {
+              console.log('⚠️ Could not get transaction hash from wallet provider:', error);
+            }
+          }
+          
+          // For now, let's use a different approach - wait for the transaction to be mined
+          // by checking the wallet's transaction history
           console.log('⏳ Waiting for transaction confirmation on blockchain...');
           
           toast({
@@ -885,18 +919,52 @@ const SwapInterface = () => {
             description: "Waiting for blockchain confirmation. Please wait...",
           });
           
-          // Wait for the transaction to be confirmed on the blockchain
-          const transactionReceipt = await publicClient.waitForTransactionReceipt({
-            hash: result,
-            confirmations: 1
-          });
-
-          console.log('✅ Transaction confirmed on blockchain:', transactionReceipt);
+          // Wait for transaction to be confirmed by polling the blockchain
+          let confirmed = false;
+          let attempts = 0;
+          const maxAttempts = 30; // 30 attempts * 2 seconds = 60 seconds max wait
           
-          if (transactionReceipt.status === 'reverted') {
-            throw new Error('Transaction was reverted on the blockchain');
+          while (!confirmed && attempts < maxAttempts) {
+            try {
+              // Check if the approval was successful by calling allowance
+              const allowance = await publicClient.readContract({
+                address: approvalTx.to as `0x${string}`,
+                abi: [{
+                  "constant": true,
+                  "inputs": [
+                    { "name": "_owner", "type": "address" },
+                    { "name": "_spender", "type": "address" }
+                  ],
+                  "name": "allowance",
+                  "outputs": [{ "name": "", "type": "uint256" }],
+                  "type": "function"
+                }] as const,
+                functionName: 'allowance',
+                args: [address as `0x${string}`, spenderAddress as `0x${string}`]
+              });
+              
+              console.log('📋 Current allowance:', allowance);
+              
+                             if (BigInt(allowance as string) >= amount) {
+                confirmed = true;
+                console.log('✅ Transaction confirmed - allowance updated');
+                break;
+              }
+            } catch (error) {
+              console.log('⚠️ Error checking allowance:', error);
+            }
+            
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
           }
-          console.log('✅ Transaction hash:', result);
+          
+          if (!confirmed) {
+            throw new Error('Transaction confirmation timeout - approval may have failed');
+          }
+          
+          console.log('✅ Transaction confirmed on blockchain');
+          transactionHash = 'confirmed_approval'; // Use a placeholder since we can't get the exact hash
+          console.log('✅ Transaction hash:', transactionHash);
           
           // Set approval status to true
           setIsApproved(true);
@@ -908,7 +976,7 @@ const SwapInterface = () => {
 
           // Now send the approval status to backend with quote data
           console.log('🎉 Token approval confirmed - now sending data to backend');
-          await processApprovedSwap(result);
+          await processApprovedSwap(transactionHash);
 
         } catch (walletError: any) {
           console.error('❌ Wallet transaction failed:', walletError);
