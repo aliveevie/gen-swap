@@ -179,7 +179,7 @@ app.get('/api/tokens/:networkName', (req, res) => {
 // Get quote for swap (using real Swapper.js logic)
 app.post('/api/quote', async (req, res) => {
   try {
-    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress } = req.body;
+  const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress } = req.body;
     
     console.log('🚀 /api/quote endpoint called with parameters:');
     console.log('📋 Request body:', req.body);
@@ -193,15 +193,15 @@ app.post('/api/quote', async (req, res) => {
     // Import and call the getQuote function
     const { getQuote } = require('./functions/getQuote.js');
     
-    const quote = await getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress);
+    const quoteResult = await getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress);
     
-    console.log('✅ Quote result from getQuote.js:', quote);
+    console.log('✅ Quote result from getQuote.js:', quoteResult);
     
     res.json({
       success: true,
       data: {
-        quote: quote,
-        toAmount: quote?.toAmount || '0'
+        quote: quoteResult,
+        toAmount: quoteResult.dstTokenAmount || '0'
       }
     });
     

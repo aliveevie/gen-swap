@@ -21,6 +21,11 @@ async function getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress
       walletAddress
     });
 
+    // Validate amount is not 0
+    if (!amount || amount === '0' || parseInt(amount) === 0) {
+      throw new Error('Amount cannot be 0. Please enter a valid amount.');
+    }
+
     const sdk = new SDK({
       url: "https://api.1inch.dev/fusion-plus",
       authKey: process.env.DEV_PORTAL_KEY,
@@ -41,7 +46,18 @@ async function getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress
 
     const quote = await sdk.getQuote(params);
     console.log('✅ Quote received from 1inch:', quote);
-    return quote;
+    
+    // Extract the dstTokenAmount and convert BigInt to string
+    const dstTokenAmount = quote.dstTokenAmount ? quote.dstTokenAmount.toString() : '0';
+    console.log('💰 dstTokenAmount extracted:', dstTokenAmount);
+    
+    return {
+      success: true,
+      dstTokenAmount: dstTokenAmount,
+      quoteId: quote.quoteId,
+      slippage: quote.slippage,
+      recommendedPreset: quote.recommendedPreset
+    };
   } catch (error) {
     console.error('❌ Error getting quote:', error);
     throw error;

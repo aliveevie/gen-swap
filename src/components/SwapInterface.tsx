@@ -119,7 +119,7 @@ const SwapInterface = () => {
   // Automatic quote fetching when parameters change
   useEffect(() => {
     const getQuoteAutomatically = async () => {
-      if (!fromAmount || !fromToken || !toToken || !isConnected || !address) {
+      if (!fromAmount || parseFloat(fromAmount) <= 0 || !fromToken || !toToken || !isConnected || !address) {
         setToAmount('');
         return;
       }
@@ -147,6 +147,13 @@ const SwapInterface = () => {
           const decimals = tokenDecimals[fromToken] || 18;
           const weiAmount = Math.floor(parseFloat(fromAmount) * Math.pow(10, decimals)).toString();
 
+          // Validate wei amount is not 0
+          if (weiAmount === '0') {
+            console.error('Wei amount is 0, cannot get quote');
+            setToAmount('0');
+            return;
+          }
+
           // Prepare quote request parameters
           const quoteParams = {
             srcChainId: parseInt(fromChain),
@@ -169,14 +176,15 @@ const SwapInterface = () => {
           
           const data = await response.json();
           
-          if (data.success && data.data.quote) {
+          if (data.success && data.data.quote && data.data.quote.dstTokenAmount) {
             // Convert quote amount back to human readable
-            const quoteAmount = data.data.quote.toAmount || '0';
+            const quoteAmount = data.data.quote.dstTokenAmount;
             const toDecimals = tokenDecimals[toToken] || 18;
             const humanAmount = (parseInt(quoteAmount) / Math.pow(10, toDecimals)).toString();
             setToAmount(humanAmount);
+            console.log('✅ Quote received:', humanAmount, toToken);
           } else {
-            console.error('Quote error:', data.error);
+            console.error('Quote error:', data.error || 'No quote data received');
             setToAmount('0');
           }
           
@@ -196,10 +204,10 @@ const SwapInterface = () => {
 
   // Manual quote refresh function
   const getQuote = async () => {
-    if (!fromAmount || !fromToken || !toToken || !isConnected || !address) {
+    if (!fromAmount || parseFloat(fromAmount) <= 0 || !fromToken || !toToken || !isConnected || !address) {
       toast({
         title: "Error",
-        description: "Please enter amount and connect wallet first",
+        description: "Please enter a valid amount and connect wallet first",
         variant: "destructive"
       });
       return;
@@ -229,6 +237,16 @@ const SwapInterface = () => {
       const decimals = tokenDecimals[fromToken] || 18;
       const weiAmount = Math.floor(parseFloat(fromAmount) * Math.pow(10, decimals)).toString();
 
+      // Validate wei amount is not 0
+      if (weiAmount === '0') {
+        toast({
+          title: "Error",
+          description: "Amount is too small to get a quote",
+          variant: "destructive"
+        });
+        return;
+      }
+
       // Prepare quote request parameters
       const quoteParams = {
         srcChainId: parseInt(fromChain),
@@ -251,8 +269,8 @@ const SwapInterface = () => {
       
       const data = await response.json();
       
-      if (data.success && data.data.quote) {
-        const quoteAmount = data.data.quote.toAmount || '0';
+      if (data.success && data.data.quote && data.data.quote.dstTokenAmount) {
+        const quoteAmount = data.data.quote.dstTokenAmount;
         const toDecimals = tokenDecimals[toToken] || 18;
         const humanAmount = (parseInt(quoteAmount) / Math.pow(10, toDecimals)).toString();
         setToAmount(humanAmount);
@@ -372,11 +390,11 @@ const SwapInterface = () => {
       
     } catch (error: any) {
       console.error('Swap error:', error);
-      toast({
+        toast({
         title: "Swap Failed",
         description: error.message || "Failed to process swap. Please try again.",
-        variant: "destructive"
-      });
+          variant: "destructive"
+        });
     } finally {
       setIsLoading(false);
     }
@@ -640,34 +658,34 @@ const SwapInterface = () => {
                 <div className="space-y-4">
                   {/* Mock swap history - you can replace this with real data */}
                   <div className="p-4 rounded-lg bg-background/30 border border-border/30 hover:border-primary/30 transition-colors">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-2">
                         <span className="text-sm font-medium">USDC → USDC</span>
                         <CheckCircle className="h-4 w-4 text-success" />
                       </div>
                       <Badge className="bg-success/20 text-success border-success/30">
                         completed
                       </Badge>
-                    </div>
-                    <div className="text-sm text-muted-foreground mb-2">
+                      </div>
+                      <div className="text-sm text-muted-foreground mb-2">
                       Ethereum → Polygon
-                    </div>
-                    <div className="flex justify-between items-center">
+                      </div>
+                      <div className="flex justify-between items-center">
                       <span className="text-sm">100 USDC</span>
                       <span className="text-sm text-muted-foreground">$98.00</span>
-                    </div>
-                    <div className="flex justify-between items-center mt-2">
+                      </div>
+                      <div className="flex justify-between items-center mt-2">
                       <span className="text-xs text-muted-foreground">Just now</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                        <Button
+                          variant="ghost"
+                          size="sm"
                         onClick={() => copyToClipboard("0x123...")}
-                        className="h-6 px-2 hover:bg-primary/20"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
+                          className="h-6 px-2 hover:bg-primary/20"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
                 </div>
               </CardContent>
             </Card>
