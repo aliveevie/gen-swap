@@ -17,6 +17,7 @@ function submitOrder(quote, approve, walletAddress, eip712Signature, userRpcUrl)
     console.log('🔐 Approve:', approve);
     console.log('🔐 Wallet address:', walletAddress);
     console.log('🔐 EIP-712 Signature:', eip712Signature ? 'Present' : 'Missing');
+    console.log('The signature is:', eip712Signature);
     console.log('🔐 User RPC URL:', userRpcUrl);
 
     // Validate quote object
@@ -36,29 +37,54 @@ function submitOrder(quote, approve, walletAddress, eip712Signature, userRpcUrl)
     }
     
     console.log('🌐 Creating provider with user RPC URL:', userRpcUrl);
-    const provider = new ethers.JsonRpcProvider(userRpcUrl);
+    const baseProvider = new ethers.JsonRpcProvider(userRpcUrl);
     
-    // Create a signer that uses the pre-signed data
-    const signer = {
-        signTypedData: async (domain, types, value) => {
-            console.log('🔐 Using pre-signed EIP-712 data');
+    // Create a custom provider that overrides signTypedData
+    const customProvider = {
+        ...baseProvider,
+        signTypedData: async (address, domain, types, value) => {
+            console.log('🔐 Custom provider signTypedData called with:', { address, domain, types, value });
+            console.log('🔐 Using pre-signed EIP-712 data instead');
             if (!eip712Signature) {
                 throw new Error('EIP-712 signature is required for order placement');
             }
             return eip712Signature;
         },
-        getAddress: async () => walletAddress
+        getSigner: () => ({
+            signTypedData: async (domain, types, value) => {
+                console.log('🔐 Custom signer signTypedData called with:', { domain, types, value });
+                console.log('🔐 Using pre-signed EIP-712 data instead');
+                if (!eip712Signature) {
+                    throw new Error('EIP-712 signature is required for order placement');
+                }
+                return eip712Signature;
+            },
+            getAddress: async () => walletAddress
+        })
     };
     
-    // Create a new SDK instance with the signer
+    // Copy all methods from baseProvider to customProvider
+    Object.getOwnPropertyNames(Object.getPrototypeOf(baseProvider)).forEach(method => {
+        if (typeof baseProvider[method] === 'function' && !customProvider[method]) {
+            customProvider[method] = baseProvider[method].bind(baseProvider);
+        }
+    });
+    
+    // Create a new SDK instance with the custom provider
     const sdk = new SDK({
         url: "https://api.1inch.dev/fusion-plus",
         authKey: process.env.DEV_PORTAL_KEY,
-        blockchainProvider: provider,
-        signer: signer
+        blockchainProvider: customProvider
     });
     
     console.log('✅ Created new SDK instance with signed data provider');
+    
+    // Debug: Check what methods the SDK has
+    console.log('🔍 SDK methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(sdk)).filter(name => typeof sdk[name] === 'function'));
+    console.log('🔍 SDK config:', sdk.config);
+    console.log('🔍 SDK blockchainProvider:', sdk.config.blockchainProvider);
+    console.log('🔍 SDK blockchainProvider signTypedData:', typeof sdk.config.blockchainProvider.signTypedData);
+    console.log('🔍 Custom provider signTypedData:', typeof customProvider.signTypedData);
 
     const preset = quote.getPreset();
     console.log('🔐 Preset:', preset);
