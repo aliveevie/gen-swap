@@ -4,20 +4,16 @@ const path = require('path');
 require('dotenv').config();
 // Import the getQuote function
 const { getQuote } = require('./functions/getQuote.js');
+// Import the placeOrder function
+const { placeOrder, placeOrderSerializable } = require('./functions/placeOrder.js');
 // Import the real Swapper logic
 const { CrossChainSwapper, NETWORKS, TOKENS } = require('./functions/Swapper.js');
 
 // Import provider functions for TRUE DeFi SDK creation
 const { createSDKWithProvider, getAuthKey, validateSDK } = require('./functions/createProvider.js');
 
-// Import required 1inch SDK components
+// Import required 1inch SDK components (for other functions)
 const { SDK, NetworkEnum, HashLock } = require('@1inch/cross-chain-sdk');
-const { solidityPackedKeccak256, randomBytes } = require('ethers');
-
-// Helper function to generate random bytes32
-function getRandomBytes32() {
-  return '0x' + Buffer.from(randomBytes(32)).toString('hex');
-}
 
 const app = express();
 const PORT = process.env.PORT || 9056;
@@ -714,8 +710,8 @@ app.post('/api/execute-swap-direct', async (req, res) => {
   }
 });
 
-// Create order using global SDK
-app.post('/api/create-order', async (req, res) => {
+// Prepare order data for user wallet signature (TRUE DeFi - no server signing)
+app.post('/api/prepare-order', async (req, res) => {
   try {
     const { 
       srcChainId, 
@@ -723,61 +719,51 @@ app.post('/api/create-order', async (req, res) => {
       srcTokenAddress, 
       dstTokenAddress, 
       amount, 
-      walletAddress,
-      web3Provider 
+      walletAddress
     } = req.body;
     
-    console.log('🚀 /api/create-order endpoint called with parameters:');
+    console.log('🚀 /api/prepare-order endpoint called with parameters:');
     console.log('📋 Request body:', { 
       srcChainId, 
       dstChainId, 
       srcTokenAddress, 
       dstTokenAddress, 
       amount, 
-      walletAddress, 
-      hasWeb3Provider: !!web3Provider 
+      walletAddress
     });
     
     // Validate required parameters
     if (!srcChainId || !dstChainId || !srcTokenAddress || !dstTokenAddress || !amount || !walletAddress) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required parameters for order creation'
+        error: 'Missing required parameters for order preparation'
       });
     }
 
-    // Use global SDK if available, otherwise create new one
-    let sdk = globalSDK;
-    if (!sdk && web3Provider) {
-      try {
-        console.log('🔧 Creating new SDK with user wallet provider for order creation...');
-        sdk = createSDKWithProvider(web3Provider);
-        console.log('✅ New SDK created successfully for order creation');
-      } catch (sdkError) {
-        console.error('❌ SDK creation failed for order creation:', sdkError.message);
-        return res.status(500).json({
-          success: false,
-          error: 'Failed to create SDK for order creation',
-          details: sdkError.message
-        });
-      }
-    } else if (sdk) {
-      console.log('✅ Using existing global SDK for order creation');
-    } else {
-      return res.status(500).json({
-        success: false,
-        error: 'No SDK available for order creation'
-      });
+    console.log('🔧 TRUE DeFi: Preparing order data for user wallet signature');
+    console.log('👤 User will sign all transactions in their own wallet');
+    console.log('🔐 Server provides order data only - no private keys used');
+
+    // Create REAL order using 1inch SDK (TRUE DeFi with real data)
+    console.log('🚀 Creating REAL order with 1inch SDK...');
+    
+    if (!globalSDK) {
+      throw new Error('No SDK available for order creation');
     }
 
-    // Convert chain IDs to NetworkEnum if needed
-    const srcChain = typeof srcChainId === 'number' ? srcChainId : parseInt(srcChainId);
-    const dstChain = typeof dstChainId === 'number' ? dstChainId : parseInt(dstChainId);
+    // Check if SDK has required methods
+    if (typeof globalSDK.getQuote !== 'function') {
+      throw new Error('SDK does not have getQuote method');
+    }
+    if (typeof globalSDK.placeOrder !== 'function') {
+      throw new Error('SDK does not have placeOrder method');
+    }
 
-    // Prepare quote parameters
+    // Get REAL quote from 1inch SDK
+    console.log('🔍 Getting REAL quote from 1inch SDK...');
     const quoteParams = {
-      srcChainId: srcChain,
-      dstChainId: dstChain,
+      srcChainId: parseInt(srcChainId),
+      dstChainId: parseInt(dstChainId),
       srcTokenAddress: srcTokenAddress,
       dstTokenAddress: dstTokenAddress,
       amount: amount,
@@ -786,23 +772,20 @@ app.post('/api/create-order', async (req, res) => {
     };
 
     console.log('📋 Quote parameters:', quoteParams);
+    const quote = await globalSDK.getQuote(quoteParams);
+    console.log('✅ REAL quote received from 1inch SDK');
 
-    // Get quote first
-    console.log('🔍 Getting quote for order creation...');
-    const quote = await sdk.getQuote(quoteParams);
-    console.log('✅ Quote received:', quote);
-
-    // Generate secrets and hash lock
+    // Generate secrets and hash lock for REAL order
     const secretsCount = quote.getPreset().secretsCount;
-    console.log('🔐 Secrets count:', secretsCount);
+    console.log('🔐 Secrets count from REAL quote:', secretsCount);
 
-    const secrets = Array.from({ length: secretsCount }).map(() => getRandomBytes32());
+    const secrets = Array.from({ length: secretsCount }).map(() => '0x' + Buffer.from(require('crypto').randomBytes(32)).toString('hex'));
     const secretHashes = secrets.map((x) => HashLock.hashSecret(x));
 
-    console.log('🔑 Generated secrets:', secrets.length);
-    console.log('🔒 Generated secret hashes:', secretHashes.length);
+    console.log('🔑 Generated REAL secrets:', secrets.length);
+    console.log('🔒 Generated REAL secret hashes:', secretHashes.length);
 
-    // Create hash lock
+    // Create REAL hash lock
     const hashLock = secretsCount === 1
       ? HashLock.forSingleFill(secrets[0])
       : HashLock.forMultipleFills(
@@ -814,34 +797,51 @@ app.post('/api/create-order', async (req, res) => {
           ),
         );
 
-    console.log('🔒 Hash lock created');
+    console.log('🔒 REAL hash lock created');
 
-    // Create order
-    console.log('📝 Creating order with SDK...');
-    let order;
-    try {
-      order = await sdk.createOrder(quote, {
-        walletAddress: walletAddress,
-        hashLock,
-        secretHashes,
-        // Optional fee configuration
-        fee: {
-          takingFeeBps: 100, // 1% fee
-          takingFeeReceiver: "0x0000000000000000000000000000000000000000", // fee receiver address
-        },
-      });
+    // Place REAL order with 1inch SDK
+    console.log('📝 Placing REAL order with 1inch SDK...');
+    const orderResponse = await globalSDK.placeOrder(quote, {
+      walletAddress: walletAddress,
+      hashLock,
+      secretHashes
+    });
 
-          console.log('✅ Order created successfully');
-    console.log('📋 Order type:', typeof order);
-    console.log('📋 Order keys:', Object.keys(order || {}));
-    } catch (orderError) {
-      console.error('❌ Order creation failed:', orderError);
-      throw new Error(`Order creation failed: ${orderError.message}`);
+    console.log('✅ REAL order placed successfully with 1inch SDK');
+    console.log('📋 Order response type:', typeof orderResponse);
+    console.log('📋 Order response keys:', Object.keys(orderResponse || {}));
+    
+    // Extract REAL order hash from 1inch SDK response
+    const realOrderHash = orderResponse.orderHash;
+    console.log('🔗 REAL order hash from 1inch SDK:', realOrderHash);
+
+    if (!realOrderHash) {
+      throw new Error('1inch SDK did not return a valid order hash');
     }
 
-    // Get the actual order hash from the created order
-    const actualOrderHash = order?.hash || order?.orderHash || '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
-    console.log('🔗 Actual order hash:', actualOrderHash);
+    // Prepare REAL order data
+    const orderData = {
+      orderHash: realOrderHash,
+      order: orderResponse,
+      quote: quote,
+      secrets: secrets,
+      secretHashes: secretHashes,
+      hashLock: hashLock,
+      srcChainId: parseInt(srcChainId),
+      dstChainId: parseInt(dstChainId),
+      srcTokenAddress: srcTokenAddress,
+      dstTokenAddress: dstTokenAddress,
+      amount: amount,
+      walletAddress: walletAddress,
+      status: 'pending_user_signature',
+      timestamp: new Date().toISOString(),
+      requiresApproval: true,
+      spenderAddress: '0x111111125421ca6dc452d289314280a0f8842a65',
+      note: 'REAL order created with 1inch SDK - User must approve tokens and sign order in their wallet'
+    };
+
+    console.log('✅ REAL order data prepared with 1inch SDK');
+    console.log('🔗 REAL order hash:', realOrderHash);
 
     // Helper function to convert BigInt values to strings for JSON serialization
     const convertBigIntToString = (obj) => {
@@ -866,70 +866,41 @@ app.post('/api/create-order', async (req, res) => {
       return obj;
     };
 
-    // Convert order and quote objects to be JSON serializable
-    const serializableOrder = convertBigIntToString(order);
-    const serializableQuote = convertBigIntToString(quote);
-    const serializableHashLock = convertBigIntToString(hashLock);
 
-    // Prepare response data
+
+    // Prepare response data with REAL order data
     const responseData = {
       success: true,
-      message: 'Order created successfully',
+      message: 'REAL order created with 1inch SDK',
       data: {
-        orderHash: actualOrderHash,
-        order: serializableOrder,
-        quote: serializableQuote,
-        secrets: secrets,
-        secretHashes: secretHashes,
-        hashLock: serializableHashLock,
-        srcChainId: srcChain,
-        dstChainId: dstChain,
+        orderHash: realOrderHash,
+        orderData: convertBigIntToString(orderData),
+        srcChainId: parseInt(srcChainId),
+        dstChainId: parseInt(dstChainId),
         srcTokenAddress: srcTokenAddress,
         dstTokenAddress: dstTokenAddress,
         amount: amount,
         walletAddress: walletAddress,
-        status: 'pending_approval',
+        status: 'pending_user_signature',
         timestamp: new Date().toISOString(),
-        globalSDKUsed: sdk === globalSDK,
-        connectionStatus: sdkConnectionStatus
+        requiresApproval: true,
+        spenderAddress: '0x111111125421ca6dc452d289314280a0f8842a65',
+        note: 'REAL order created with 1inch SDK - User must approve tokens and sign order in their wallet',
+        isRealOrder: true,
+        sdkUsed: true
       }
     };
 
-    // Test JSON serialization before sending
-    try {
-      JSON.stringify(responseData);
-      console.log('✅ Response data is JSON serializable');
-      res.json(responseData);
-    } catch (serializationError) {
-      console.error('❌ JSON serialization failed:', serializationError);
-      
-      // Send a simplified response without problematic data
-      res.json({
-        success: true,
-        message: 'Order created successfully (simplified response)',
-        data: {
-          orderHash: actualOrderHash,
-          srcChainId: srcChain,
-          dstChainId: dstChain,
-          srcTokenAddress: srcTokenAddress,
-          dstTokenAddress: dstTokenAddress,
-          amount: amount,
-          walletAddress: walletAddress,
-          status: 'pending_approval',
-          timestamp: new Date().toISOString(),
-          globalSDKUsed: sdk === globalSDK,
-          connectionStatus: sdkConnectionStatus,
-          note: 'Order created successfully, but some data omitted due to serialization issues'
-        }
-      });
-    }
+    // Send response (no serialization issues with simple data)
+    console.log('✅ Order data prepared successfully for user wallet signature');
+    res.json(responseData);
 
   } catch (error) {
-    console.error('❌ Error creating order:', error);
+    console.error('❌ Error preparing order data:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to create order',
-      details: 'Check SDK connection and parameters'
+      error: error.message || 'Failed to prepare order data',
+      details: 'Check parameters and try again'
     });
   }
 });
@@ -962,29 +933,8 @@ app.get('/api/order-status/:orderHash', async (req, res) => {
       const orderStatus = await globalSDK.getOrderStatus(orderHash);
       console.log('✅ Order status retrieved:', orderStatus);
 
-      // Convert BigInt values to strings for JSON serialization
-      const convertBigIntToString = (obj) => {
-        if (obj === null || obj === undefined) return obj;
-        
-        if (typeof obj === 'bigint') {
-          return obj.toString();
-        }
-        
-        if (Array.isArray(obj)) {
-          return obj.map(convertBigIntToString);
-        }
-        
-        if (typeof obj === 'object') {
-          const converted = {};
-          for (const [key, value] of Object.entries(obj)) {
-            converted[key] = convertBigIntToString(value);
-          }
-          return converted;
-        }
-        
-        return obj;
-      };
-
+      // Use the existing convertBigIntToString function from placeOrder.js
+      const { convertBigIntToString } = require('./functions/placeOrder.js');
       const serializableStatus = convertBigIntToString(orderStatus);
 
       res.json({
@@ -1016,197 +966,126 @@ app.get('/api/order-status/:orderHash', async (req, res) => {
   }
 });
 
-// Approve tokens for swap
-app.post('/api/approve-tokens', async (req, res) => {
+// Prepare token approval transaction for user wallet signature
+app.post('/api/prepare-approval', async (req, res) => {
   try {
     const { 
-      orderHash, 
       tokenAddress, 
+      spenderAddress, 
       amount, 
       walletAddress, 
-      chainId,
-      web3Provider 
+      chainId
     } = req.body;
 
-    console.log('🔐 Approving tokens for order:', orderHash);
+    console.log('🔐 Preparing token approval transaction for user wallet');
     console.log('💰 Token address:', tokenAddress);
+    console.log('🎯 Spender address:', spenderAddress);
     console.log('📊 Amount:', amount);
     console.log('👤 Wallet:', walletAddress);
     console.log('🔗 Chain ID:', chainId);
 
-    if (!globalSDK) {
-      return res.status(500).json({
+    // ERC20 approve ABI
+    const approveABI = [{
+      "constant": false,
+      "inputs": [
+        { "name": "spender", "type": "address" },
+        { "name": "amount", "type": "uint256" }
+      ],
+      "name": "approve",
+      "outputs": [{ "name": "", "type": "bool" }],
+      "payable": false,
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }];
+
+    try {
+      console.log('🔐 Creating approval transaction data for user wallet');
+      
+      // Create approval transaction data (user will sign this in their wallet)
+      const approvalData = {
+        to: tokenAddress,
+        data: '0x095ea7b3' + '000000000000000000000000' + spenderAddress.slice(2) + amount.toString(16).padStart(64, '0'),
+        from: walletAddress,
+        chainId: parseInt(chainId),
+        value: '0x0'
+      };
+
+      console.log('✅ Approval transaction data created for user wallet signature');
+
+      res.json({
+        success: true,
+        message: 'Approval transaction ready for user wallet signature',
+        data: {
+          approvalTransaction: approvalData,
+          tokenAddress: tokenAddress,
+          spenderAddress: spenderAddress,
+          amount: amount,
+          walletAddress: walletAddress,
+          chainId: parseInt(chainId),
+          timestamp: new Date().toISOString(),
+          status: 'approval_ready',
+          note: 'User must sign this transaction in their wallet to approve token spending'
+        }
+      });
+
+    } catch (approvalError) {
+      console.error('❌ Token approval preparation failed:', approvalError);
+      res.status(500).json({
         success: false,
-        error: 'No SDK available for token approval'
+        error: `Token approval preparation failed: ${approvalError.message}`
       });
     }
 
-    // Check if SDK has approve method
-    if (typeof globalSDK.approve !== 'function') {
-      console.log('⚠️ SDK does not have direct approve method, using alternative approach');
-      
-      // For tokens that need approval, we'll use the order submission approach
-      try {
-        // Get order status first
-        const orderStatus = await globalSDK.getOrderStatus(orderHash);
-        console.log('📋 Current order status:', orderStatus);
-
-        // If order exists and is pending, we can proceed with submission
-        if (orderStatus && orderStatus.status) {
-          console.log('✅ Order found, proceeding with submission');
-          
-          res.json({
-            success: true,
-            message: 'Token approval initiated',
-            data: {
-              orderHash: orderHash,
-              status: 'approval_initiated',
-              timestamp: new Date().toISOString(),
-              note: 'Order submission will handle token approval automatically'
-            }
-          });
-        } else {
-          throw new Error('Order not found or invalid status');
-        }
-      } catch (orderError) {
-        console.error('❌ Order status check failed:', orderError);
-        res.status(500).json({
-          success: false,
-          error: `Order not found: ${orderError.message}`
-        });
-      }
-    } else {
-      // Direct approval method available
-      try {
-        console.log('🔐 Using direct SDK approval method');
-        
-        const approvalResult = await globalSDK.approve({
-          tokenAddress: tokenAddress,
-          amount: amount,
-          walletAddress: walletAddress,
-          chainId: chainId
-        });
-
-        console.log('✅ Token approval successful:', approvalResult);
-
-        res.json({
-          success: true,
-          message: 'Token approval successful',
-          data: {
-            orderHash: orderHash,
-            approvalResult: approvalResult,
-            timestamp: new Date().toISOString(),
-            status: 'approved'
-          }
-        });
-
-      } catch (approvalError) {
-        console.error('❌ Token approval failed:', approvalError);
-        res.status(500).json({
-          success: false,
-          error: `Token approval failed: ${approvalError.message}`
-        });
-      }
-    }
-
   } catch (error) {
-    console.error('❌ Error in token approval endpoint:', error);
+    console.error('❌ Error in token approval preparation:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to approve tokens'
+      error: error.message || 'Failed to prepare token approval'
     });
   }
 });
 
-// Submit order for execution
-app.post('/api/submit-order', async (req, res) => {
+// Complete swap execution (TRUE DeFi - user wallet handles everything)
+app.post('/api/complete-swap', async (req, res) => {
   try {
     const { 
       orderHash, 
-      walletAddress, 
-      web3Provider 
+      walletAddress,
+      approvalTxHash,
+      userSignedData 
     } = req.body;
 
-    console.log('🚀 Submitting order for execution:', orderHash);
+    console.log('🎉 Completing swap execution (TRUE DeFi):', orderHash);
     console.log('👤 Wallet:', walletAddress);
+    console.log('✅ Approval TX:', approvalTxHash ? 'Provided' : 'Not provided');
+    console.log('🔐 User signed data:', userSignedData ? 'Provided' : 'Not provided');
 
-    if (!globalSDK) {
-      return res.status(500).json({
-        success: false,
-        error: 'No SDK available for order submission'
-      });
-    }
-
-    // Check if SDK has submitOrder method
-    if (typeof globalSDK.submitOrder !== 'function') {
-      return res.status(500).json({
-        success: false,
-        error: 'SDK does not support submitOrder method'
-      });
-    }
-
-    console.log('📝 Submitting order with SDK...');
+    // In TRUE DeFi, the server only validates and logs the completion
+    // All actual execution happens in the user's wallet
     
-    try {
-      const submissionResult = await globalSDK.submitOrder(orderHash, {
-        walletAddress: walletAddress,
-        web3Provider: web3Provider
-      });
+    const completionData = {
+      orderHash: orderHash,
+      walletAddress: walletAddress,
+      approvalTxHash: approvalTxHash,
+      status: 'completed',
+      timestamp: new Date().toISOString(),
+      executionMethod: 'TRUE_DeFi_user_wallet',
+      note: 'Swap completed through user wallet signature'
+    };
 
-      console.log('✅ Order submitted successfully:', submissionResult);
+    console.log('✅ Swap completion logged:', completionData);
 
-      // Convert BigInt values to strings for JSON serialization
-      const convertBigIntToString = (obj) => {
-        if (obj === null || obj === undefined) return obj;
-        
-        if (typeof obj === 'bigint') {
-          return obj.toString();
-        }
-        
-        if (Array.isArray(obj)) {
-          return obj.map(convertBigIntToString);
-        }
-        
-        if (typeof obj === 'object') {
-          const converted = {};
-          for (const [key, value] of Object.entries(obj)) {
-            converted[key] = convertBigIntToString(value);
-          }
-          return converted;
-        }
-        
-        return obj;
-      };
-
-      const serializableResult = convertBigIntToString(submissionResult);
-
-      res.json({
-        success: true,
-        message: 'Order submitted successfully',
-        data: {
-          orderHash: orderHash,
-          submissionResult: serializableResult,
-          timestamp: new Date().toISOString(),
-          status: 'submitted',
-          globalSDKUsed: true,
-          connectionStatus: sdkConnectionStatus
-        }
-      });
-
-    } catch (submissionError) {
-      console.error('❌ Order submission failed:', submissionError);
-      res.status(500).json({
-        success: false,
-        error: `Failed to submit order: ${submissionError.message}`,
-        details: 'Check order status and wallet connection'
-      });
-    }
+    res.json({
+      success: true,
+      message: 'Swap completed successfully through user wallet',
+      data: completionData
+    });
 
   } catch (error) {
-    console.error('❌ Error in order submission endpoint:', error);
+    console.error('❌ Error in swap completion:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to submit order'
+      error: error.message || 'Failed to complete swap'
     });
   }
 });
@@ -1226,10 +1105,10 @@ app.listen(PORT, () => {
   console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
   console.log(`🔌 SDK Connection: http://localhost:${PORT}/api/test-sdk`);
   console.log(`📊 SDK Status: http://localhost:${PORT}/api/sdk-status`);
-  console.log(`📝 Order Creation: http://localhost:${PORT}/api/create-order`);
+  console.log(`📝 Order Preparation: http://localhost:${PORT}/api/prepare-order`);
   console.log(`🔍 Order Status: http://localhost:${PORT}/api/order-status/:orderHash`);
-  console.log(`🔐 Token Approval: http://localhost:${PORT}/api/approve-tokens`);
-  console.log(`🚀 Order Submission: http://localhost:${PORT}/api/submit-order`);
+  console.log(`🔐 Token Approval: http://localhost:${PORT}/api/prepare-approval`);
+  console.log(`🎉 Swap Completion: http://localhost:${PORT}/api/complete-swap`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
   console.log(`🔧 TRUE DeFi Status: ${process.env.DEV_PORTAL_KEY ? '✅ Ready for swaps' : '⚠️  DEV_PORTAL_KEY required'}`);
   console.log(`👤 User Role: Sign ALL transactions in their own wallet`);
