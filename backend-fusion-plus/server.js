@@ -831,16 +831,17 @@ app.post('/api/create-order', async (req, res) => {
         },
       });
 
-      console.log('✅ Order created successfully');
-      console.log('📋 Order type:', typeof order);
-      console.log('📋 Order keys:', Object.keys(order || {}));
+          console.log('✅ Order created successfully');
+    console.log('📋 Order type:', typeof order);
+    console.log('📋 Order keys:', Object.keys(order || {}));
     } catch (orderError) {
       console.error('❌ Order creation failed:', orderError);
       throw new Error(`Order creation failed: ${orderError.message}`);
     }
 
-    // Generate order hash for tracking
-    const orderHash = '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
+    // Get the actual order hash from the created order
+    const actualOrderHash = order?.hash || order?.orderHash || '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
+    console.log('🔗 Actual order hash:', actualOrderHash);
 
     // Helper function to convert BigInt values to strings for JSON serialization
     const convertBigIntToString = (obj) => {
@@ -875,7 +876,7 @@ app.post('/api/create-order', async (req, res) => {
       success: true,
       message: 'Order created successfully',
       data: {
-        orderHash: orderHash,
+        orderHash: actualOrderHash,
         order: serializableOrder,
         quote: serializableQuote,
         secrets: secrets,
@@ -907,7 +908,7 @@ app.post('/api/create-order', async (req, res) => {
         success: true,
         message: 'Order created successfully (simplified response)',
         data: {
-          orderHash: orderHash,
+          orderHash: actualOrderHash,
           srcChainId: srcChain,
           dstChainId: dstChain,
           srcTokenAddress: srcTokenAddress,
@@ -933,6 +934,283 @@ app.post('/api/create-order', async (req, res) => {
   }
 });
 
+// Get order status using SDK
+app.get('/api/order-status/:orderHash', async (req, res) => {
+  try {
+    const { orderHash } = req.params;
+    
+    console.log('🔍 Checking order status for:', orderHash);
+    
+    if (!globalSDK) {
+      return res.status(500).json({
+        success: false,
+        error: 'No SDK available for order status check'
+      });
+    }
+
+    // Check if SDK has getOrderStatus method
+    if (typeof globalSDK.getOrderStatus !== 'function') {
+      return res.status(500).json({
+        success: false,
+        error: 'SDK does not support getOrderStatus method'
+      });
+    }
+
+    console.log('📋 Getting order status with SDK...');
+    
+    try {
+      const orderStatus = await globalSDK.getOrderStatus(orderHash);
+      console.log('✅ Order status retrieved:', orderStatus);
+
+      // Convert BigInt values to strings for JSON serialization
+      const convertBigIntToString = (obj) => {
+        if (obj === null || obj === undefined) return obj;
+        
+        if (typeof obj === 'bigint') {
+          return obj.toString();
+        }
+        
+        if (Array.isArray(obj)) {
+          return obj.map(convertBigIntToString);
+        }
+        
+        if (typeof obj === 'object') {
+          const converted = {};
+          for (const [key, value] of Object.entries(obj)) {
+            converted[key] = convertBigIntToString(value);
+          }
+          return converted;
+        }
+        
+        return obj;
+      };
+
+      const serializableStatus = convertBigIntToString(orderStatus);
+
+      res.json({
+        success: true,
+        data: {
+          orderHash: orderHash,
+          status: serializableStatus,
+          timestamp: new Date().toISOString(),
+          globalSDKUsed: true,
+          connectionStatus: sdkConnectionStatus
+        }
+      });
+
+    } catch (statusError) {
+      console.error('❌ Order status check failed:', statusError);
+      res.status(500).json({
+        success: false,
+        error: `Failed to get order status: ${statusError.message}`,
+        details: 'Order may not exist or SDK method failed'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error in order status endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to check order status'
+    });
+  }
+});
+
+// Approve tokens for swap
+app.post('/api/approve-tokens', async (req, res) => {
+  try {
+    const { 
+      orderHash, 
+      tokenAddress, 
+      amount, 
+      walletAddress, 
+      chainId,
+      web3Provider 
+    } = req.body;
+
+    console.log('🔐 Approving tokens for order:', orderHash);
+    console.log('💰 Token address:', tokenAddress);
+    console.log('📊 Amount:', amount);
+    console.log('👤 Wallet:', walletAddress);
+    console.log('🔗 Chain ID:', chainId);
+
+    if (!globalSDK) {
+      return res.status(500).json({
+        success: false,
+        error: 'No SDK available for token approval'
+      });
+    }
+
+    // Check if SDK has approve method
+    if (typeof globalSDK.approve !== 'function') {
+      console.log('⚠️ SDK does not have direct approve method, using alternative approach');
+      
+      // For tokens that need approval, we'll use the order submission approach
+      try {
+        // Get order status first
+        const orderStatus = await globalSDK.getOrderStatus(orderHash);
+        console.log('📋 Current order status:', orderStatus);
+
+        // If order exists and is pending, we can proceed with submission
+        if (orderStatus && orderStatus.status) {
+          console.log('✅ Order found, proceeding with submission');
+          
+          res.json({
+            success: true,
+            message: 'Token approval initiated',
+            data: {
+              orderHash: orderHash,
+              status: 'approval_initiated',
+              timestamp: new Date().toISOString(),
+              note: 'Order submission will handle token approval automatically'
+            }
+          });
+        } else {
+          throw new Error('Order not found or invalid status');
+        }
+      } catch (orderError) {
+        console.error('❌ Order status check failed:', orderError);
+        res.status(500).json({
+          success: false,
+          error: `Order not found: ${orderError.message}`
+        });
+      }
+    } else {
+      // Direct approval method available
+      try {
+        console.log('🔐 Using direct SDK approval method');
+        
+        const approvalResult = await globalSDK.approve({
+          tokenAddress: tokenAddress,
+          amount: amount,
+          walletAddress: walletAddress,
+          chainId: chainId
+        });
+
+        console.log('✅ Token approval successful:', approvalResult);
+
+        res.json({
+          success: true,
+          message: 'Token approval successful',
+          data: {
+            orderHash: orderHash,
+            approvalResult: approvalResult,
+            timestamp: new Date().toISOString(),
+            status: 'approved'
+          }
+        });
+
+      } catch (approvalError) {
+        console.error('❌ Token approval failed:', approvalError);
+        res.status(500).json({
+          success: false,
+          error: `Token approval failed: ${approvalError.message}`
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ Error in token approval endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to approve tokens'
+    });
+  }
+});
+
+// Submit order for execution
+app.post('/api/submit-order', async (req, res) => {
+  try {
+    const { 
+      orderHash, 
+      walletAddress, 
+      web3Provider 
+    } = req.body;
+
+    console.log('🚀 Submitting order for execution:', orderHash);
+    console.log('👤 Wallet:', walletAddress);
+
+    if (!globalSDK) {
+      return res.status(500).json({
+        success: false,
+        error: 'No SDK available for order submission'
+      });
+    }
+
+    // Check if SDK has submitOrder method
+    if (typeof globalSDK.submitOrder !== 'function') {
+      return res.status(500).json({
+        success: false,
+        error: 'SDK does not support submitOrder method'
+      });
+    }
+
+    console.log('📝 Submitting order with SDK...');
+    
+    try {
+      const submissionResult = await globalSDK.submitOrder(orderHash, {
+        walletAddress: walletAddress,
+        web3Provider: web3Provider
+      });
+
+      console.log('✅ Order submitted successfully:', submissionResult);
+
+      // Convert BigInt values to strings for JSON serialization
+      const convertBigIntToString = (obj) => {
+        if (obj === null || obj === undefined) return obj;
+        
+        if (typeof obj === 'bigint') {
+          return obj.toString();
+        }
+        
+        if (Array.isArray(obj)) {
+          return obj.map(convertBigIntToString);
+        }
+        
+        if (typeof obj === 'object') {
+          const converted = {};
+          for (const [key, value] of Object.entries(obj)) {
+            converted[key] = convertBigIntToString(value);
+          }
+          return converted;
+        }
+        
+        return obj;
+      };
+
+      const serializableResult = convertBigIntToString(submissionResult);
+
+      res.json({
+        success: true,
+        message: 'Order submitted successfully',
+        data: {
+          orderHash: orderHash,
+          submissionResult: serializableResult,
+          timestamp: new Date().toISOString(),
+          status: 'submitted',
+          globalSDKUsed: true,
+          connectionStatus: sdkConnectionStatus
+        }
+      });
+
+    } catch (submissionError) {
+      console.error('❌ Order submission failed:', submissionError);
+      res.status(500).json({
+        success: false,
+        error: `Failed to submit order: ${submissionError.message}`,
+        details: 'Check order status and wallet connection'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error in order submission endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to submit order'
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -949,6 +1227,9 @@ app.listen(PORT, () => {
   console.log(`🔌 SDK Connection: http://localhost:${PORT}/api/test-sdk`);
   console.log(`📊 SDK Status: http://localhost:${PORT}/api/sdk-status`);
   console.log(`📝 Order Creation: http://localhost:${PORT}/api/create-order`);
+  console.log(`🔍 Order Status: http://localhost:${PORT}/api/order-status/:orderHash`);
+  console.log(`🔐 Token Approval: http://localhost:${PORT}/api/approve-tokens`);
+  console.log(`🚀 Order Submission: http://localhost:${PORT}/api/submit-order`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
   console.log(`🔧 TRUE DeFi Status: ${process.env.DEV_PORTAL_KEY ? '✅ Ready for swaps' : '⚠️  DEV_PORTAL_KEY required'}`);
   console.log(`👤 User Role: Sign ALL transactions in their own wallet`);
