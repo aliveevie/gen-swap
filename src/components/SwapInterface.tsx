@@ -15,15 +15,18 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Shield,
+  Lock
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount, useChainId, useSwitchChain, useBalance, usePublicClient } from 'wagmi';
+import { useAccount, useChainId, useSwitchChain, useBalance, usePublicClient, useWriteContract } from 'wagmi';
 import WalletConnector from "./WalletConnector";
+import WalletSDKConnector from "./WalletSDKConnector";
 import { ClientSwapper } from "@/lib/clientSwapper";
 
 // Import token data from data.ts
@@ -58,6 +61,14 @@ const SwapInterface = () => {
   const [isApproved, setIsApproved] = useState(false);
   const [sdkInitialized, setSdkInitialized] = useState(false);
   const [sdkLoading, setSdkLoading] = useState(false);
+  const [orderData, setOrderData] = useState<any>(null);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [orderStatus, setOrderStatus] = useState<any>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [submissionLoading, setSubmissionLoading] = useState(false);
+  const [swapCompleted, setSwapCompleted] = useState(false);
   const { toast } = useToast();
   
   // Client swapper instance
@@ -68,6 +79,7 @@ const SwapInterface = () => {
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const publicClient = usePublicClient({ chainId: parseInt(fromChain) });
+  const { writeContract } = useWriteContract();
 
   // Get token address for balance checking
   const getTokenAddressForBalance = (networkId: string, tokenSymbol: string) => {
@@ -509,7 +521,17 @@ const SwapInterface = () => {
       return;
     }
 
-    setIsLoading(true);
+    // Check if SDK is initialized
+    if (!sdkInitialized) {
+      toast({
+        title: "SDK Not Connected",
+        description: "Please wait for SDK connection to complete",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setOrderLoading(true);
     
     try {
       // Get token addresses
@@ -528,8 +550,8 @@ const SwapInterface = () => {
       const decimals = tokenDecimals[fromToken] || 18;
       const weiAmount = Math.floor(parseFloat(fromAmount) * Math.pow(10, decimals)).toString();
 
-      // Prepare swap parameters
-      const swapParams = {
+      // Prepare order parameters for user wallet signature
+      const orderParams = {
         srcChainId: parseInt(fromChain),
         dstChainId: parseInt(toChain),
         srcTokenAddress: srcTokenAddress,
@@ -538,47 +560,48 @@ const SwapInterface = () => {
         walletAddress: address
       };
 
-      console.log('🚀 Starting swap with parameters:', swapParams);
+      console.log('🚀 Preparing order data for user wallet signature:', orderParams);
 
       toast({
-        title: "Swap Starting",
-        description: "Processing your cross-chain swap...",
+        title: "Preparing Order",
+        description: "Preparing your cross-chain swap order data...",
       });
 
-      // For now, just simulate a successful swap
-      const mockTxHash = '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
-      
-      // Add to swap history
-      const newSwap = {
-        id: Date.now(),
-        fromChain: NETWORKS[Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === fromChain) || 'ethereum']?.name || fromChain,
-        toChain: NETWORKS[Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === toChain) || 'ethereum']?.name || toChain,
-        fromToken,
-        toToken,
-        amount: fromAmount,
-        value: `$${(parseFloat(fromAmount) * 0.98).toFixed(2)}`,
-        status: 'completed',
-        txHash: mockTxHash,
-        timestamp: 'Just now'
-      };
-      
-      setTxHash(mockTxHash);
-      setShowConfirmModal(true);
-      
-      toast({
-        title: "✅ Swap Completed!",
-        description: `Transaction hash: ${mockTxHash.slice(0, 10)}...`,
+      // Prepare order data for user wallet signature
+      const response = await fetch(`${API_BASE_URL}/prepare-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderParams)
       });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('✅ Order data prepared successfully:', data.data);
+        
+        // Store order data for approval
+        setOrderData(data.data);
+        setShowOrderModal(true);
+        
+        toast({
+          title: "✅ Order Data Prepared!",
+          description: `Ready for token approval and wallet signature`,
+        });
+      } else {
+        throw new Error(data.error || 'Failed to prepare order data');
+      }
       
     } catch (error: any) {
-      console.error('Swap error:', error);
-        toast({
-        title: "Swap Failed",
-        description: error.message || "Failed to process swap. Please try again.",
-          variant: "destructive"
-        });
+      console.error('Order preparation error:', error);
+      toast({
+        title: "Order Preparation Failed",
+        description: error.message || "Failed to prepare order data. Please try again.",
+        variant: "destructive"
+      });
     } finally {
-      setIsLoading(false);
+      setOrderLoading(false);
     }
   };
 
@@ -611,6 +634,228 @@ const SwapInterface = () => {
       title: "Copied!",
       description: "Transaction hash copied to clipboard",
     });
+  };
+
+  // Check order status
+  const checkOrderStatus = async (orderHash: string) => {
+    if (!orderHash) return;
+    
+    setStatusLoading(true);
+    try {
+      console.log('🔍 Checking order status for:', orderHash);
+      
+      const response = await fetch(`${API_BASE_URL}/order-status/${orderHash}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('✅ Order status retrieved:', data.data);
+        setOrderStatus(data.data);
+        toast({
+          title: "Order Status Updated",
+          description: "Order status has been refreshed",
+        });
+      } else {
+        throw new Error(data.error || 'Failed to get order status');
+      }
+    } catch (error: any) {
+      console.error('❌ Order status check failed:', error);
+      toast({
+        title: "Status Check Failed",
+        description: error.message || "Failed to check order status",
+        variant: "destructive"
+      });
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  // Approve tokens for swap using user's wallet
+  const approveTokens = async () => {
+    if (!orderData || !orderData.orderHash) {
+      toast({
+        title: "Error",
+        description: "No order data available for approval",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setApprovalLoading(true);
+    try {
+      console.log('🔐 Preparing token approval for user wallet:', orderData.orderHash);
+      
+      // Get token address and amount
+      const tokenAddress = getTokenAddress(fromChain, fromToken);
+      const tokenDecimals = getTokenDecimals(fromToken);
+      const weiAmount = Math.floor(parseFloat(fromAmount) * Math.pow(10, tokenDecimals)).toString();
+
+      const approvalParams = {
+        tokenAddress: tokenAddress,
+        spenderAddress: '0x111111125421ca6dc452d289314280a0f8842a65', // 1inch spender
+        amount: weiAmount,
+        walletAddress: address,
+        chainId: parseInt(fromChain)
+      };
+
+      console.log('🔐 Preparing approval transaction:', approvalParams);
+
+      toast({
+        title: "Preparing Approval",
+        description: "Preparing token approval transaction...",
+      });
+
+      // Get approval transaction data
+      const response = await fetch(`${API_BASE_URL}/prepare-approval`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(approvalParams)
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('✅ Approval transaction prepared:', data.data);
+        
+        // Send transaction to user's wallet for signature
+        const approvalTx = data.data.approvalTransaction;
+        
+        toast({
+          title: "Approve Tokens",
+          description: "Please approve the token spending in your wallet...",
+        });
+
+        // Use wagmi to send the transaction
+        try {
+          const spenderAddress = '0x' + approvalTx.data.slice(34, 74);
+          const amount = BigInt('0x' + approvalTx.data.slice(74));
+          
+          const result = await writeContract({
+            address: approvalTx.to as `0x${string}`,
+            abi: [{
+              "constant": false,
+              "inputs": [
+                { "name": "spender", "type": "address" },
+                { "name": "amount", "type": "uint256" }
+              ],
+              "name": "approve",
+              "outputs": [{ "name": "", "type": "bool" }],
+              "payable": false,
+              "stateMutability": "nonpayable",
+              "type": "function"
+            }],
+            functionName: 'approve',
+            args: [spenderAddress as `0x${string}`, amount]
+          });
+
+          console.log('✅ Token approval transaction sent:', result);
+          
+          toast({
+            title: "✅ Tokens Approved!",
+            description: "Token approval completed successfully",
+          });
+
+          // After approval, automatically complete the swap
+          await completeSwap(result);
+        } catch (walletError: any) {
+          console.error('❌ Wallet transaction failed:', walletError);
+          toast({
+            title: "Wallet Transaction Failed",
+            description: walletError.message || "Failed to send approval transaction",
+            variant: "destructive"
+          });
+        }
+      } else {
+        throw new Error(data.error || 'Failed to prepare approval');
+      }
+    } catch (error: any) {
+      console.error('❌ Token approval failed:', error);
+      toast({
+        title: "Approval Failed",
+        description: error.message || "Failed to approve tokens. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setApprovalLoading(false);
+    }
+  };
+
+  // Complete swap execution (TRUE DeFi - user wallet handles everything)
+  const completeSwap = async (approvalTxResult?: any) => {
+    if (!orderData || !orderData.orderHash) {
+      toast({
+        title: "Error",
+        description: "No order data available for completion",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSubmissionLoading(true);
+    try {
+      console.log('🎉 Completing swap execution (TRUE DeFi):', orderData.orderHash);
+      
+      const completionParams = {
+        orderHash: orderData.orderHash,
+        walletAddress: address,
+        approvalTxHash: approvalTxResult?.hash || approvalTxResult,
+        userSignedData: {
+          fromChain: fromChain,
+          toChain: toChain,
+          fromToken: fromToken,
+          toToken: toToken,
+          amount: fromAmount,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      console.log('🎉 Sending swap completion:', completionParams);
+
+      toast({
+        title: "Completing Swap",
+        description: "Finalizing your cross-chain swap...",
+      });
+
+      const response = await fetch(`${API_BASE_URL}/complete-swap`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(completionParams)
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('✅ Swap completed successfully:', data.data);
+        
+        setSwapCompleted(true);
+        setShowOrderModal(false);
+        
+        toast({
+          title: "🎉 Swap Completed!",
+          description: "Your cross-chain swap has been executed successfully!",
+        });
+
+        // Reset form
+        setFromAmount('');
+        setToAmount('');
+        setOrderData(null);
+        setOrderStatus(null);
+      } else {
+        throw new Error(data.error || 'Failed to complete swap');
+      }
+    } catch (error: any) {
+      console.error('❌ Swap completion failed:', error);
+      toast({
+        title: "Completion Failed",
+        description: error.message || "Failed to complete swap. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setSubmissionLoading(false);
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -862,13 +1107,13 @@ const SwapInterface = () => {
                 {/* Swap Button */}
                 <Button
                   onClick={handleSwap}
-                  disabled={!isConnected || !fromAmount || !toAmount || isLoading || !hasSufficientBalance() || !sdkInitialized}
+                  disabled={!isConnected || !fromAmount || !toAmount || orderLoading || !hasSufficientBalance() || !sdkInitialized}
                   className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
                 >
-                  {isLoading ? (
+                  {orderLoading ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Processing Swap...
+                      Creating Order...
                     </>
                   ) : !isConnected ? (
                     "Connect Wallet to Swap"
@@ -887,15 +1132,18 @@ const SwapInterface = () => {
                       Connecting SDK...
                     </>
                   ) : (
-                    `Swap ${fromAmount} ${fromToken} for ${toAmount} ${toToken}`
+                    `Create Order: ${fromAmount} ${fromToken} → ${toAmount} ${toToken}`
                   )}
                 </Button>
               </CardContent>
             </Card>
           </div>
 
-          {/* Swap History */}
-          <div className="lg:col-span-1">
+          {/* Wallet SDK Connection */}
+          <div className="lg:col-span-1 space-y-4">
+            <WalletSDKConnector />
+            
+            {/* Swap History */}
             <Card className="bg-gradient-card backdrop-blur-sm border-border/50 shadow-card">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -943,6 +1191,190 @@ const SwapInterface = () => {
           </div>
         </div>
       </div>
+
+      {/* Order Confirmation Modal */}
+      <Dialog open={showOrderModal} onOpenChange={setShowOrderModal}>
+        <DialogContent className="bg-gradient-card backdrop-blur-sm border-border/50 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <span>Confirm Cross-Chain Swap Order</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-6 space-y-6">
+            {orderData && (
+              <>
+                {/* Order Details */}
+                <div className="space-y-4">
+                  <div className="bg-background/50 p-4 rounded-lg border border-border/50">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium">Order Details</span>
+                      <Badge className="bg-warning/20 text-warning border-warning/30">
+                        Pending Approval
+                      </Badge>
+                    </div>
+                    
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">From:</span>
+                        <span>{fromAmount} {fromToken} on {NETWORKS[Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === fromChain) || 'ethereum']?.name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">To:</span>
+                        <span>{toAmount} {toToken} on {NETWORKS[Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === toChain) || 'ethereum']?.name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Order Hash:</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-mono text-xs">{orderData.orderHash.slice(0, 10)}...</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(orderData.orderHash)}
+                            className="h-6 w-6 p-0"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => checkOrderStatus(orderData.orderHash)}
+                            className="h-6 w-6 p-0"
+                            disabled={statusLoading}
+                          >
+                            <RefreshCw className={`h-3 w-3 ${statusLoading ? 'animate-spin' : ''}`} />
+                          </Button>
+                        </div>
+                      </div>
+                      {orderStatus && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Status:</span>
+                          <Badge className="bg-primary/20 text-primary border-primary/30">
+                            {orderStatus.status?.status || 'Unknown'}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Security Info */}
+                  <div className="bg-background/30 p-4 rounded-lg border border-border/30">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Lock className="h-4 w-4 text-success" />
+                      <span className="text-sm font-medium">Security Features</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <div>• Order created with your wallet provider</div>
+                      <div>• No private keys stored on server</div>
+                      <div>• Hash lock protection enabled</div>
+                      <div>• TRUE DeFi architecture</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3">
+                  <Button
+                    onClick={approveTokens}
+                    disabled={approvalLoading || submissionLoading}
+                    className="flex-1 bg-gradient-primary hover:opacity-90 disabled:opacity-50"
+                  >
+                    {approvalLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Approving...
+                      </>
+                    ) : submissionLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Executing...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="mr-2 h-4 w-4" />
+                        Approve & Execute Swap
+                      </>
+                    )}
+                  </Button>
+                  
+                  <Button
+                    onClick={() => setShowOrderModal(false)}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={approvalLoading || submissionLoading}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+
+                {/* Order Status */}
+                <div className="text-center">
+                  <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    <span>Order will expire in 30 minutes</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Swap Completion Modal */}
+      <Dialog open={swapCompleted} onOpenChange={setSwapCompleted}>
+        <DialogContent className="bg-gradient-card backdrop-blur-sm border-border/50 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <CheckCircle className="h-5 w-5 text-success" />
+              <span>Swap Completed Successfully!</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-6 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-success/20 rounded-full flex items-center justify-center">
+              <CheckCircle className="h-8 w-8 text-success" />
+            </div>
+            <p className="text-lg mb-4">Your cross-chain swap has been executed!</p>
+            <div className="bg-background/50 p-4 rounded-lg border border-border/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">From:</span>
+                <span className="text-sm font-medium">{fromAmount} {fromToken}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">To:</span>
+                <span className="text-sm font-medium">{toAmount} {toToken}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Status:</span>
+                <Badge className="bg-success/20 text-success border-success/30">
+                  Completed
+                </Badge>
+              </div>
+            </div>
+            <div className="mt-4 flex space-x-3">
+              <Button
+                onClick={() => {
+                  setSwapCompleted(false);
+                  // Reset form for new swap
+                  setFromAmount('');
+                  setToAmount('');
+                  setOrderData(null);
+                  setOrderStatus(null);
+                }}
+                className="flex-1 bg-gradient-primary hover:opacity-90"
+              >
+                Start New Swap
+              </Button>
+              <Button
+                onClick={() => setSwapCompleted(false)}
+                variant="outline"
+                className="flex-1"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Transaction Confirmation Modal */}
       <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
