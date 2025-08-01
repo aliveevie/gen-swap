@@ -11,7 +11,7 @@ const { CrossChainSwapper, NETWORKS, TOKENS } = require('./functions/Swapper.js'
 
 // Import provider functions for TRUE DeFi SDK creation
 const { createSDKWithProvider, getAuthKey, validateSDK } = require('./functions/createProvider.js');
-
+const { Swapping } = require('./functions/orderWithGlobal.js');
 // Import required 1inch SDK components (for other functions)
 const { SDK, NetworkEnum, HashLock } = require('@1inch/cross-chain-sdk');
 
@@ -279,10 +279,11 @@ app.post('/api/quote', async (req, res) => {
     const quoteResult = await getQuote(srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress);
     
     console.log('✅ Quote result from getQuote.js:', quoteResult);
+
     
     res.json({
       success: true,
-              data: {
+          data: {
           quote: quoteResult,
           toAmount: quoteResult.dstTokenAmount || '0',
           sdkCreated: !!sdk,
@@ -304,82 +305,38 @@ app.post('/api/quote', async (req, res) => {
 // Generate swap parameters (client-side execution with user wallet approval)
 app.post('/api/swap', async (req, res) => {
   try {
-    const { fromChainId, toChainId, fromToken, toToken, amount, walletAddress } = req.body;
+    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress, approve } = req.body;
+
+    // srcChainId: parseInt(fromChain),
+    // dstChainId: parseInt(toChain),
+    // srcTokenAddress: srcTokenAddress,
+    // dstTokenAddress: dstTokenAddress,
+    // amount: weiAmount,
+    // walletAddress: address,
+    // approve: true
+
+    console.log("Request body, ", req.body)
+
+    const params = {
+      srcChainId: srcChainId, // Pass as number, not NetworkEnum
+      dstChainId: dstChainId, // Pass as number, not NetworkEnum
+      srcTokenAddress: srcTokenAddress,
+      dstTokenAddress: dstTokenAddress,
+      amount: amount,
+      walletAddress: walletAddress,
+    };
+
+    console.log('The params, ', params)
     
-    if (!fromChainId || !toChainId || !fromToken || !toToken || !amount || !walletAddress) {
+    if (!srcChainId || !dstChainId || !srcTokenAddress || !dstTokenAddress || !amount || !walletAddress) {
       return res.status(400).json({
         success: false,
         error: 'Missing required parameters'
       });
+      
+      Swapping(params, globalSDK, true);
+
     }
-
-    // Find network names from chain IDs
-    const fromNetwork = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(fromChainId));
-    const toNetwork = Object.keys(NETWORKS).find(name => NETWORKS[name].chainId === parseInt(toChainId));
-    
-    if (!fromNetwork || !toNetwork) {
-      return res.status(400).json({
-        success: false,
-        error: 'Unsupported network chain ID'
-      });
-    }
-
-    console.log(`📋 Generating swap parameters: ${amount} ${fromToken} on ${fromNetwork} to ${toToken} on ${toNetwork}`);
-
-    // Convert amount to wei
-    const tokenDecimals = {
-      'USDC': 6, 'USDT': 6, 'DAI': 18, 'WETH': 18, 'WBTC': 8,
-      'ETH': 18, 'MATIC': 18, 'BNB': 18, 'AVAX': 18, 'OP': 18, 'FTM': 18
-    };
-    const decimals = tokenDecimals[fromToken] || 18;
-    const weiAmount = Math.floor(parseFloat(amount) * Math.pow(10, decimals)).toString();
-
-    // Get token addresses
-    const srcTokenAddress = TOKENS[fromNetwork][fromToken];
-    const dstTokenAddress = TOKENS[toNetwork][toToken];
-    
-    if (!srcTokenAddress || !dstTokenAddress) {
-      return res.status(400).json({
-        success: false,
-        error: 'Token not supported for this network pair'
-      });
-    }
-
-    // Generate swap parameters for client-side execution with user wallet approval
-    const swapParams = {
-      fromChainId: parseInt(fromChainId),
-      toChainId: parseInt(toChainId),
-      fromToken,
-      toToken,
-      fromTokenAddress: srcTokenAddress,
-      toTokenAddress: dstTokenAddress,
-      amount: weiAmount,
-      humanAmount: amount,
-      walletAddress,
-      fromNetwork,
-      toNetwork,
-      spenderAddress: '0x111111125421ca6dc452d289314280a0f8842a65', // 1inch spender
-      requiresApproval: true
-    };
-
-    // Generate order hash for tracking
-    const orderHash = '0x' + Math.random().toString(16).substr(2, 40) + Date.now().toString(16);
-    
-    res.json({
-      success: true,
-      data: {
-        orderHash,
-        fromAmount: amount,
-        fromToken,
-        toToken,
-        fromChainId,
-        toChainId,
-        status: 'pending_approval',
-        swapParams: swapParams,
-        message: 'Swap parameters generated. User must approve token spending in their wallet before swap execution.'
-      }
-    });
-    
   } catch (error) {
     console.error('Error generating swap parameters:', error);
     res.status(500).json({

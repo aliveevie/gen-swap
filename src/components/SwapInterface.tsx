@@ -557,7 +557,8 @@ const SwapInterface = () => {
         srcTokenAddress: srcTokenAddress,
         dstTokenAddress: dstTokenAddress,
         amount: weiAmount,
-        walletAddress: address
+        walletAddress: address,
+        approve: true
       };
 
       console.log('🚀 Preparing order data for user wallet signature:', orderParams);
@@ -568,7 +569,7 @@ const SwapInterface = () => {
       });
 
       // Prepare order data for user wallet signature
-      const response = await fetch(`${API_BASE_URL}/prepare-order`, {
+      const response = await fetch(`${API_BASE_URL}/swap`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

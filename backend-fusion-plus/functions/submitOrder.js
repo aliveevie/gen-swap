@@ -1,31 +1,5 @@
-// CommonJS syntax for orderWithGlobal.js
-const { HashLock } = require("@1inch/cross-chain-sdk");
-const { solidityPackedKeccak256, randomBytes } = require('ethers');
-const dotenv = require('dotenv');
-
-// Load environment variables
-dotenv.config();
-
-function getRandomBytes32() {
-    return '0x' + randomBytes(32).toString('hex');
-}
-
-function Swapping(params, sdk, appove) {
-    if (appove) {
-    sdk.getQuote(params).then(quote => {
-        const secretsCount = quote.getPreset().secretsCount;
-        const secrets = Array.from({ length: secretsCount }).map(() => getRandomBytes32());
-        const secretHashes = secrets.map(x => HashLock.hashSecret(x));
-
-        const hashLock = secretsCount === 1
-            ? HashLock.forSingleFill(secrets[0])
-            : HashLock.forMultipleFills(
-                secretHashes.map((secretHash, i) =>
-                    solidityPackedKeccak256(['uint64', 'bytes32'], [i, secretHash.toString()])
-                )
-            );
-
-        console.log("Received Fusion+ quote from 1inch API");
+export function submitOrder(quote, sdk, approve) {
+    if (approve) {
 
         sdk.placeOrder(quote, {
             walletAddress: params.walletAddress,
@@ -90,6 +64,5 @@ function Swapping(params, sdk, appove) {
     } else {
         console.log("Approval is not required");
     }
+    }
 }
-
-module.exports = { Swapping };
