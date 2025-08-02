@@ -17,7 +17,13 @@ import {
   Loader2,
   AlertTriangle,
   Shield,
-  Lock
+  Lock,
+  MessageCircle,
+  Send,
+  Bot,
+  X,
+  Minimize2,
+  Maximize2
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +76,29 @@ const SwapInterface = () => {
   const [submissionLoading, setSubmissionLoading] = useState(false);
   const [swapCompleted, setSwapCompleted] = useState(false);
   const [currentQuote, setCurrentQuote] = useState<any>(null);
+  
+  // AI Chat Interface State
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatMinimized, setIsChatMinimized] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{
+    id: string;
+    type: 'user' | 'ai';
+    content: string;
+    timestamp: Date;
+    isLoading?: boolean;
+  }>>([
+    {
+      id: '1',
+      type: 'ai',
+      content: 'Hello! I\'m your AI DeFi assistant. I can help you with cross-chain swaps, explain token prices, check balances, and answer any questions about the GenSwap platform. How can I help you today?',
+      timestamp: new Date()
+    }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  
   const { toast } = useToast();
   
   // Client swapper instance
@@ -1447,6 +1476,119 @@ const SwapInterface = () => {
     }
   };
 
+  // AI Chat Functions
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatMessages]);
+
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const userMessage = {
+      id: Date.now().toString(),
+      type: 'user' as const,
+      content: chatInput.trim(),
+      timestamp: new Date()
+    };
+
+    setChatMessages(prev => [...prev, userMessage]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    // Add loading message
+    const loadingMessage = {
+      id: (Date.now() + 1).toString(),
+      type: 'ai' as const,
+      content: '',
+      timestamp: new Date(),
+      isLoading: true
+    };
+
+    setChatMessages(prev => [...prev, loadingMessage]);
+
+    try {
+      // Simulate AI response (replace with actual AI API call)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const aiResponse = generateAIResponse(chatInput.trim());
+      
+      // Remove loading message and add AI response
+      setChatMessages(prev => prev.filter(msg => !msg.isLoading).concat({
+        id: (Date.now() + 2).toString(),
+        type: 'ai',
+        content: aiResponse,
+        timestamp: new Date()
+      }));
+
+    } catch (error) {
+      console.error('AI chat error:', error);
+      setChatMessages(prev => prev.filter(msg => !msg.isLoading).concat({
+        id: (Date.now() + 2).toString(),
+        type: 'ai',
+        content: 'Sorry, I encountered an error. Please try again.',
+        timestamp: new Date()
+      }));
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const generateAIResponse = (userInput: string): string => {
+    const input = userInput.toLowerCase();
+    
+    // DeFi and swap related responses
+    if (input.includes('swap') || input.includes('exchange')) {
+      return 'I can help you with cross-chain swaps! Select your source and destination chains, choose your tokens, enter the amount, and I\'ll guide you through the process. The platform supports 8+ major networks including Ethereum, Polygon, Arbitrum, and more.';
+    }
+    
+    if (input.includes('price') || input.includes('quote')) {
+      return 'Token prices are fetched in real-time from 1inch Price Feeds API. You can see live prices when you select tokens, and I can help you understand price movements and market trends.';
+    }
+    
+    if (input.includes('balance') || input.includes('wallet')) {
+      return 'Your wallet balance is automatically checked when you connect. I can help you understand your token balances across different networks and ensure you have sufficient funds for swaps.';
+    }
+    
+    if (input.includes('network') || input.includes('chain')) {
+      return 'GenSwap supports 8 major networks: Ethereum, Arbitrum, Base, Polygon, BSC, Avalanche, Optimism, and Fantom. Each network has different gas fees and transaction speeds. Which network would you like to learn more about?';
+    }
+    
+    if (input.includes('gas') || input.includes('fee')) {
+      return 'Gas fees vary by network. Ethereum typically has higher fees but is the most secure. Layer 2 networks like Arbitrum and Polygon offer lower fees. I can help you choose the best network for your transaction.';
+    }
+    
+    if (input.includes('security') || input.includes('safe')) {
+      return 'GenSwap uses TRUE DeFi architecture - you maintain complete control of your wallet. All transactions are signed in your wallet, and the server only provides API access. No private keys are ever stored on our servers.';
+    }
+    
+    if (input.includes('help') || input.includes('how')) {
+      return 'I\'m here to help! I can assist with:\n• Cross-chain swaps\n• Token price information\n• Balance checking\n• Network selection\n• Security questions\n• Transaction troubleshooting\n\nJust ask me anything about DeFi or the platform!';
+    }
+    
+    if (input.includes('hello') || input.includes('hi')) {
+      return 'Hello! I\'m your AI DeFi assistant. I can help you navigate the GenSwap platform, understand cross-chain swaps, check token prices, and answer any DeFi-related questions. What would you like to know?';
+    }
+    
+    // Default response
+    return 'I\'m your AI DeFi assistant for GenSwap. I can help you with cross-chain swaps, token prices, wallet balances, network information, and general DeFi questions. How can I assist you today?';
+  };
+
+  const toggleChat = () => {
+    setIsChatOpen(!isChatOpen);
+    if (!isChatOpen) {
+      setIsChatMinimized(false);
+    }
+  };
+
+  const minimizeChat = () => {
+    setIsChatMinimized(!isChatMinimized);
+  };
+
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Background Effects */}
@@ -2017,6 +2159,133 @@ const SwapInterface = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* AI Chat Interface */}
+      <div className="fixed bottom-6 right-6 z-50">
+        {/* Chat Toggle Button */}
+        {!isChatOpen && (
+          <Button
+            onClick={toggleChat}
+            className="h-14 w-14 rounded-full bg-gradient-primary hover:bg-gradient-primary/90 shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center group"
+          >
+            <MessageCircle className="h-6 w-6 text-white" />
+            <div className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center">
+              <span className="text-xs text-white font-bold">AI</span>
+            </div>
+          </Button>
+        )}
+
+        {/* Chat Window */}
+        {isChatOpen && (
+          <div className={`bg-gradient-card backdrop-blur-sm border border-border/50 rounded-2xl shadow-2xl transition-all duration-300 ${
+            isChatMinimized ? 'h-16 w-80' : 'h-96 w-80'
+          }`}>
+            {/* Chat Header */}
+            <div className="flex items-center justify-between p-4 border-b border-border/50 bg-background/20 rounded-t-2xl">
+              <div className="flex items-center space-x-3">
+                <div className="h-8 w-8 bg-gradient-primary rounded-full flex items-center justify-center">
+                  <Bot className="h-4 w-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">AI DeFi Assistant</h3>
+                  <p className="text-xs text-muted-foreground">Powered by GenSwap</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={minimizeChat}
+                  className="h-6 w-6 p-0 hover:bg-primary/20"
+                >
+                  {isChatMinimized ? (
+                    <Maximize2 className="h-3 w-3" />
+                  ) : (
+                    <Minimize2 className="h-3 w-3" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleChat}
+                  className="h-6 w-6 p-0 hover:bg-destructive/20 text-destructive"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Chat Messages */}
+            {!isChatMinimized && (
+              <>
+                <div 
+                  ref={chatContainerRef}
+                  className="h-64 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                >
+                  {chatMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+                          message.type === 'user'
+                            ? 'bg-gradient-primary text-white'
+                            : 'bg-background/50 border border-border/50'
+                        }`}
+                      >
+                        {message.isLoading ? (
+                          <div className="flex items-center space-x-2">
+                            <div className="flex space-x-1">
+                              <div className="h-2 w-2 bg-primary rounded-full animate-bounce"></div>
+                              <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                              <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                            </div>
+                            <span className="text-sm text-muted-foreground">AI is typing...</span>
+                          </div>
+                        ) : (
+                          <div className="text-sm whitespace-pre-line">{message.content}</div>
+                        )}
+                        <div className={`text-xs mt-1 ${
+                          message.type === 'user' ? 'text-white/70' : 'text-muted-foreground'
+                        }`}>
+                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Chat Input */}
+                <form onSubmit={handleChatSubmit} className="p-4 border-t border-border/50">
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="Ask me about DeFi, swaps, or anything..."
+                      className="flex-1 bg-background/50 border-border/50 focus:border-primary/50"
+                      disabled={isChatLoading}
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={!chatInput.trim() || isChatLoading}
+                      className="bg-gradient-primary hover:bg-gradient-primary/90 disabled:opacity-50"
+                    >
+                      {isChatLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
