@@ -1485,6 +1485,11 @@ const SwapInterface = () => {
     scrollToBottom();
   }, [chatMessages]);
 
+  // Debug chat state changes
+  useEffect(() => {
+    console.log('🔍 Chat state changed:', { isChatOpen, isChatMinimized });
+  }, [isChatOpen, isChatMinimized]);
+
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
@@ -1567,10 +1572,12 @@ const SwapInterface = () => {
 
 
   const toggleChat = () => {
+    console.log('🔍 Toggle chat clicked. Current state:', { isChatOpen, isChatMinimized });
     setIsChatOpen(!isChatOpen);
     if (!isChatOpen) {
       setIsChatMinimized(false);
     }
+    console.log('🔍 Chat state after toggle:', { isChatOpen: !isChatOpen, isChatMinimized: false });
   };
 
   const minimizeChat = () => {
@@ -1698,7 +1705,7 @@ const SwapInterface = () => {
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-pulse-glow" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary-glow/20 rounded-full blur-3xl animate-pulse-glow" />
       
-      <div className="relative z-10 container mx-auto px-4 py-8">
+      <div className="relative z-10 container mx-auto px-4 py-8 pb-32">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-3">
@@ -1715,7 +1722,25 @@ const SwapInterface = () => {
             </div>
           </div>
           
-          <WalletConnector />
+          <div className="flex items-center space-x-4">
+            {/* Debug Chat Button - Remove this in production */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsChatOpen(true);
+                setIsChatMinimized(false);
+                toast({
+                  title: "AI Chat Opened",
+                  description: "AI DeFi Assistant is now available!",
+                });
+              }}
+              className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+            >
+              🤖 Open AI Chat
+            </Button>
+            <WalletConnector />
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -2263,34 +2288,36 @@ const SwapInterface = () => {
       </Dialog>
 
       {/* AI Chat Interface */}
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed bottom-20 md:bottom-24 right-4 md:right-6 z-[9999]">
         {/* Chat Toggle Button */}
         {!isChatOpen && (
           <Button
             onClick={toggleChat}
-            className="h-14 w-14 rounded-full bg-gradient-primary hover:bg-gradient-primary/90 shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center group"
+            className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-2xl hover:shadow-3xl transition-all duration-300 flex items-center justify-center group relative"
           >
-            <MessageCircle className="h-6 w-6 text-white" />
-            <div className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center">
+            <MessageCircle className="h-7 w-7 text-white" />
+            <div className="absolute -top-2 -right-2 h-6 w-6 bg-red-500 rounded-full flex items-center justify-center border-2 border-white shadow-lg">
               <span className="text-xs text-white font-bold">AI</span>
             </div>
+            {/* Pulse animation */}
+            <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20"></div>
           </Button>
         )}
 
         {/* Chat Window */}
         {isChatOpen && (
-          <div className={`bg-gradient-card backdrop-blur-sm border border-border/50 rounded-2xl shadow-2xl transition-all duration-300 ${
-            isChatMinimized ? 'h-16 w-80' : 'h-96 w-80'
+          <div className={`bg-white/95 backdrop-blur-xl border border-gray-200/50 rounded-3xl shadow-2xl transition-all duration-300 ${
+            isChatMinimized ? 'h-20 w-80' : 'h-[500px] w-96'
           }`}>
             {/* Chat Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border/50 bg-background/20 rounded-t-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200/50 bg-gradient-to-r from-blue-50 to-purple-50 rounded-t-3xl">
               <div className="flex items-center space-x-3">
-                <div className="h-8 w-8 bg-gradient-primary rounded-full flex items-center justify-center">
-                  <Bot className="h-4 w-4 text-white" />
+                <div className="h-10 w-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
+                  <Bot className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm">AI DeFi Assistant</h3>
-                  <p className="text-xs text-muted-foreground">Powered by GenSwap</p>
+                  <h3 className="font-bold text-sm text-gray-800">AI DeFi Assistant</h3>
+                  <p className="text-xs text-gray-600">Powered by GenSwap</p>
                 </div>
               </div>
               <div className="flex items-center space-x-1">
@@ -2298,21 +2325,21 @@ const SwapInterface = () => {
                   variant="ghost"
                   size="sm"
                   onClick={minimizeChat}
-                  className="h-6 w-6 p-0 hover:bg-primary/20"
+                  className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
                 >
                   {isChatMinimized ? (
-                    <Maximize2 className="h-3 w-3" />
+                    <Maximize2 className="h-4 w-4 text-gray-600" />
                   ) : (
-                    <Minimize2 className="h-3 w-3" />
+                    <Minimize2 className="h-4 w-4 text-gray-600" />
                   )}
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={toggleChat}
-                  className="h-6 w-6 p-0 hover:bg-destructive/20 text-destructive"
+                  className="h-8 w-8 p-0 hover:bg-red-100 rounded-full"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-4 w-4 text-red-500" />
                 </Button>
               </div>
             </div>
@@ -2322,7 +2349,7 @@ const SwapInterface = () => {
               <>
                 <div 
                   ref={chatContainerRef}
-                  className="h-64 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                  className="h-80 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent"
                 >
                   {chatMessages.map((message) => (
                     <div
@@ -2330,26 +2357,26 @@ const SwapInterface = () => {
                       className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+                        className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
                           message.type === 'user'
-                            ? 'bg-gradient-primary text-white'
-                            : 'bg-background/50 border border-border/50'
+                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
+                            : 'bg-white border border-gray-300 text-gray-800 shadow-md'
                         }`}
                       >
                         {message.isLoading ? (
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-3">
                             <div className="flex space-x-1">
-                              <div className="h-2 w-2 bg-primary rounded-full animate-bounce"></div>
-                              <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                              <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce"></div>
+                              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                              <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                             </div>
-                            <span className="text-sm text-muted-foreground">AI is typing...</span>
+                            <span className="text-sm text-gray-700 font-medium">AI is thinking...</span>
                           </div>
                         ) : (
-                          <div className="text-sm whitespace-pre-line">{message.content}</div>
+                          <div className="text-sm whitespace-pre-line leading-relaxed text-gray-800 font-medium">{message.content}</div>
                         )}
-                        <div className={`text-xs mt-1 ${
-                          message.type === 'user' ? 'text-white/70' : 'text-muted-foreground'
+                        <div className={`text-xs mt-2 ${
+                          message.type === 'user' ? 'text-blue-100' : 'text-gray-600 font-medium'
                         }`}>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
@@ -2360,14 +2387,14 @@ const SwapInterface = () => {
                 </div>
 
                 {/* Quick Action Buttons */}
-                <div className="px-4 py-2 border-t border-border/50 bg-background/20">
+                <div className="px-4 py-3 border-t border-gray-200/50 bg-gradient-to-r from-gray-50 to-blue-50">
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleQuickAction('analyze-swap')}
                       disabled={isChatLoading}
-                      className="text-xs h-7"
+                      className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
                     >
                       🔍 Analyze Swap
                     </Button>
@@ -2376,7 +2403,7 @@ const SwapInterface = () => {
                       size="sm"
                       onClick={() => handleQuickAction('market-insights')}
                       disabled={isChatLoading}
-                      className="text-xs h-7"
+                      className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
                     >
                       📊 Market Insights
                     </Button>
@@ -2385,7 +2412,7 @@ const SwapInterface = () => {
                       size="sm"
                       onClick={() => handleQuickAction('optimize-swap')}
                       disabled={isChatLoading}
-                      className="text-xs h-7"
+                      className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
                     >
                       ⚡ Optimize
                     </Button>
@@ -2394,7 +2421,7 @@ const SwapInterface = () => {
                       size="sm"
                       onClick={() => handleQuickAction('educational')}
                       disabled={isChatLoading}
-                      className="text-xs h-7"
+                      className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
                     >
                       📚 Learn
                     </Button>
@@ -2402,20 +2429,20 @@ const SwapInterface = () => {
                 </div>
 
                 {/* Chat Input */}
-                <form onSubmit={handleChatSubmit} className="p-4 border-t border-border/50">
+                <form onSubmit={handleChatSubmit} className="p-4 border-t border-gray-200/50 bg-white">
                   <div className="flex items-center space-x-2">
                     <Input
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       placeholder="Ask me about DeFi, swaps, or anything..."
-                      className="flex-1 bg-background/50 border-border/50 focus:border-primary/50"
+                      className="flex-1 bg-white border-gray-300 focus:border-blue-400 focus:ring-blue-400 rounded-xl text-gray-800 placeholder-gray-500"
                       disabled={isChatLoading}
                     />
                     <Button
                       type="submit"
                       size="sm"
                       disabled={!chatInput.trim() || isChatLoading}
-                      className="bg-gradient-primary hover:bg-gradient-primary/90 disabled:opacity-50"
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 h-10 w-10 rounded-xl"
                     >
                       {isChatLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
