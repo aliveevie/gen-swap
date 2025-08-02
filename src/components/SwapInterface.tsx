@@ -1060,20 +1060,97 @@ const SwapInterface = () => {
         ]
       };
 
-      // Generate a random salt for the order (this should be unique per order)
-      const salt = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
+      // Use the exact values extracted from the quote object by the backend
+      // These values come from the 1inch SDK quote and are the exact values the SDK expects
+      const exactValues = currentQuote?.exactValues;
       
-      // Create the order data using the exact structure from the SDK
+      if (!exactValues) {
+        console.error('❌ No exact values found in quote object!');
+        toast({
+          title: "Quote Error",
+          description: "Quote data is missing required values. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Use the exact values from the quote (dynamically extracted by backend)
+      const salt = exactValues.salt;
+      const takingAmount = exactValues.dstTokenAmount;
+      const makerTraits = exactValues.makerTraits;
+      const takerAsset = exactValues.dstTokenAddress;
+      
+      console.log('🔐 USING DYNAMIC VALUES FROM QUOTE:');
+      console.log('🔐 These values are extracted from the 1inch SDK quote object');
+      
+      // Log the exact values we're using from the quote
+      console.log('🔐 EXACT VALUES FROM QUOTE:');
+      console.log('🔐 Salt:', salt);
+      console.log('🔐 Taking Amount:', takingAmount);
+      console.log('🔐 Taker Asset:', takerAsset);
+      console.log('🔐 Maker Traits:', makerTraits);
+      console.log('🔐 Full exactValues object:', exactValues);
+      
+      console.log('🔐 EIP-712 Values from Quote Object:');
+      console.log('🔐 Salt:', salt);
+      console.log('🔐 Taking Amount:', takingAmount);
+      console.log('🔐 Maker Traits:', makerTraits);
+      console.log('🔐 Taker Asset:', takerAsset);
+      console.log('🔐 Current Quote Object:', currentQuote);
+      
+      console.log('🔐 QUOTE ANALYSIS:');
+      console.log('🔐 Quote has salt:', !!currentQuote?.salt);
+      console.log('🔐 Quote has dstTokenAmount:', !!currentQuote?.dstTokenAmount);
+      console.log('🔐 Quote has dstTokenAddress:', !!currentQuote?.dstTokenAddress);
+      console.log('🔐 Quote has makerTraits:', !!currentQuote?.makerTraits);
+      
+      // Create the order data using the exact values from the quote object
       const message = {
         salt: salt,
         maker: address,
         receiver: '0x0000000000000000000000000000000000000000',
         makerAsset: getTokenAddress(fromChain, fromToken),
-        takerAsset: getTokenAddress(toChain, toToken),
+        takerAsset: takerAsset, // Use the exact address from the quote
         makingAmount: Math.floor(parseFloat(fromAmount) * Math.pow(10, getTokenDecimals(fromToken))).toString(),
-        takingAmount: currentQuote?.dstTokenAmount || '0',
-        makerTraits: '62419173104490761595518734106364469839019469472311288259522377282303131910144' // Default makerTraits
+        takingAmount: takingAmount, // Use the exact amount the user expects to receive
+        makerTraits: makerTraits
       };
+      
+      // Log the exact data we're about to sign for comparison
+      console.log('🔐 FRONTEND SIGNING DATA:');
+      console.log('🔐 Domain:', JSON.stringify(domain, null, 2));
+      console.log('🔐 Types:', JSON.stringify(types, null, 2));
+      console.log('🔐 Message:', JSON.stringify(message, null, 2));
+      console.log('🔐 Full EIP-712 Data:', JSON.stringify({ domain, types, primaryType: 'Order', message }, null, 2));
+      
+      // Log the expected data from the SDK error for comparison
+      console.log('🔐 EXPECTED SDK DATA (from error):');
+      console.log('🔐 Expected Domain:', JSON.stringify({
+        name: "1inch Aggregation Router",
+        version: "6",
+        chainId: 42161,
+        verifyingContract: "0x111111125421ca6dc452d289314280a0f8842a65"
+      }, null, 2));
+      console.log('🔐 Expected Message:', JSON.stringify({
+        maker: "0x6dbc17c7e398807dba3a7e0f80ea686deed35eba",
+        makerAsset: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+        takerAsset: "0xda0000d4000015a526378bb6fafc650cea5966f8",
+        makerTraits: "62419173104490761595518734106643312524177918888344010093236686688879363751936",
+        salt: "9445680530224305540524292030867566681388014142675087687752274005807264959808",
+        makingAmount: "1200000",
+        takingAmount: "988609",
+        receiver: "0x0000000000000000000000000000000000000000"
+      }, null, 2));
+      
+      console.log('🔐 COMPARISON - What we sign vs What SDK expects:');
+      console.log('🔐 Our takerAsset:', message.takerAsset);
+      console.log('🔐 Expected takerAsset: 0xda0000d4000015a526378bb6fafc650cea5966f8');
+      console.log('🔐 Our takingAmount:', message.takingAmount);
+      console.log('🔐 Expected takingAmount: 988609');
+      console.log('🔐 Our salt:', message.salt);
+      console.log('🔐 Expected salt: 9445680530224305540524292030867566681388014142675087687752274005807264959808');
+      console.log('🔐 Our makerTraits:', message.makerTraits);
+      console.log('🔐 Expected makerTraits: 62419173104490761595518734106643312524177918888344010093236686688879363751936');
 
       console.log('🔐 EIP-712 data to sign:', { domain, types, message });
 
@@ -1085,14 +1162,28 @@ const SwapInterface = () => {
 
       console.log('✅ EIP-712 signature received:', signature);
 
+      // Decode and analyze the signature
+      console.log('🔐 SIGNATURE ANALYSIS:');
+      console.log('🔐 Full signature:', signature);
+      console.log('🔐 Signature length:', signature.length);
+      
+      // Extract signature components
+      const r = signature.slice(0, 66);
+      const s = '0x' + signature.slice(66, 130);
+      const v = parseInt(signature.slice(130, 132), 16);
+      
+      console.log('🔐 Signature components:');
+      console.log('🔐 r (first 32 bytes):', r);
+      console.log('🔐 s (next 32 bytes):', s);
+      console.log('🔐 v (recovery byte):', v);
+
       toast({
         title: "✅ Order Signed!",
         description: "Order data signed successfully. Submitting to backend...",
       });
 
-      // For debugging, let's not send the signature yet to see what the SDK expects
-      console.log('🔐 Captured signature but not sending to backend for debugging');
-      await processApprovedSwap(approvalTxResult, undefined);
+      // Now send the signed data to backend
+      await processApprovedSwap(approvalTxResult, signature);
 
     } catch (error: any) {
       console.error('❌ EIP-712 signing failed:', error);

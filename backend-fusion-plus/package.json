@@ -27,6 +27,7 @@
   "license": "ISC",
   "dependencies": {
     "@1inch/cross-chain-sdk": "latest",
+    "axios": "^1.8.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.3",

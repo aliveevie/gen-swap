@@ -1,6 +1,7 @@
 const { HashLock } = require("@1inch/cross-chain-sdk");
 const { solidityPackedKeccak256 } = require('ethers');
 const crypto = require('crypto');
+const axios = require("axios");
 
 function getRandomBytes32() {
     const bytes = crypto.randomBytes(32);
@@ -12,7 +13,7 @@ function getRandomBytes32() {
 }
 
 function submitOrder(quote, approve, walletAddress, eip712Signature, userRpcUrl) {
-    console.log('🔐 Starting order submission...');
+    console.log('🔐 Starting order submission with direct API...');
     console.log('🔐 Quote:', quote);
     console.log('🔐 Approve:', approve);
     console.log('🔐 Wallet address:', walletAddress);
@@ -20,213 +21,169 @@ function submitOrder(quote, approve, walletAddress, eip712Signature, userRpcUrl)
     console.log('The signature is:', eip712Signature);
     console.log('🔐 User RPC URL:', userRpcUrl);
 
-    // Validate quote object
-    if (!quote || typeof quote.getPreset !== 'function') {
-        throw new Error('Invalid quote object - missing getPreset method');
-    }
-    
-    // Create a new SDK instance with signed data provider
-    console.log('🔧 Creating new SDK instance with signed data provider');
-    
-    const { SDK } = require("@1inch/cross-chain-sdk");
-    const { ethers } = require('ethers');
-    
-    // Create a provider that uses the user's RPC URL
-    if (!userRpcUrl) {
-        throw new Error('User RPC URL is required for order placement');
-    }
-    
-    console.log('🌐 Creating provider with user RPC URL:', userRpcUrl);
-    const baseProvider = new ethers.JsonRpcProvider(userRpcUrl);
-    
-    // Create a custom provider that overrides signTypedData
-    const customProvider = {
-        ...baseProvider,
-        signTypedData: async (address, domain, types, value) => {
-            console.log('🔐 Custom provider signTypedData called with:', { address, domain, types, value });
-            console.log('🔐 Domain:', domain);
-            console.log('🔐 Types:', types);
-            console.log('🔐 Value:', value);
-            console.log('🔐 Using pre-signed EIP-712 signature:', eip712Signature);
-            
-            // Capture the exact data the SDK is trying to sign
-            console.log('🔐 SDK is requesting signature for:');
-            console.log('🔐 Address:', address);
-            console.log('🔐 Domain:', JSON.stringify(domain, null, 2));
-            console.log('🔐 Types:', JSON.stringify(types, null, 2));
-            console.log('🔐 Value:', JSON.stringify(value, null, 2));
-            
+    return new Promise(async (resolve, reject) => {
+        try {
+            if (!approve) {
+                console.log("Approval is not required");
+                resolve({ success: false, message: "Approval is not required" });
+                return;
+            }
+
+            // Validate inputs
+            if (!quote || typeof quote.getPreset !== 'function') {
+                throw new Error('Invalid quote object - missing getPreset method');
+            }
+
             if (!eip712Signature) {
-                // For debugging, let's throw an error with the exact data needed
-                throw new Error(`EIP-712 signature required. Please sign this data: Address=${address}, Domain=${JSON.stringify(domain)}, Types=${JSON.stringify(types)}, Value=${JSON.stringify(value)}`);
+                throw new Error('EIP-712 signature is required for order submission');
+            }
+
+            if (!walletAddress) {
+                throw new Error('Wallet address is required');
+            }
+
+            // Extract order details from quote
+            const preset = quote.getPreset();
+            console.log('🔐 Preset:', preset);
+            
+            if (!preset || typeof preset.secretsCount !== 'number') {
+                throw new Error('Invalid preset - missing secretsCount');
             }
             
-            console.log('✅ Using provided EIP-712 signature:', eip712Signature.substring(0, 20) + '...');
-            return eip712Signature;
-        },
-        getSigner: () => ({
-            signTypedData: async (domain, types, value) => {
-                console.log('🔐 Custom signer signTypedData called with:', { domain, types, value });
-                console.log('🔐 Domain:', domain);
-                console.log('🔐 Types:', types);
-                console.log('🔐 Value:', value);
-                console.log('🔐 Using pre-signed EIP-712 signature:', eip712Signature);
+            const secretsCount = preset.secretsCount;
+            console.log('🔐 Secrets count:', secretsCount);
+            
+            // Generate secrets and hashes
+            const secrets = Array.from({ length: secretsCount }).map(() => getRandomBytes32());
+            console.log('🔐 Generated secrets array length:', secrets.length);
+            
+            const secretHashes = secrets.map((x, index) => {
+                console.log(`🔐 Hashing secret ${index}:`, x);
                 
-                // Capture the exact data the SDK is trying to sign
-                console.log('🔐 SDK is requesting signature for:');
-                console.log('🔐 Domain:', JSON.stringify(domain, null, 2));
-                console.log('🔐 Types:', JSON.stringify(types, null, 2));
-                console.log('🔐 Value:', JSON.stringify(value, null, 2));
-                
-                if (!eip712Signature) {
-                    // For debugging, let's throw an error with the exact data needed
-                    throw new Error(`EIP-712 signature required. Please sign this data: Domain=${JSON.stringify(domain)}, Types=${JSON.stringify(types)}, Value=${JSON.stringify(value)}`);
+                // Validate hex format
+                if (!x.startsWith('0x') || x.length !== 66) {
+                    throw new Error(`Invalid hex format for secret ${index}: ${x}`);
                 }
                 
-                console.log('✅ Using provided EIP-712 signature:', eip712Signature.substring(0, 20) + '...');
-                return eip712Signature;
-            },
-            getAddress: async () => walletAddress
-        })
-    };
-    
-    // Copy all methods from baseProvider to customProvider
-    Object.getOwnPropertyNames(Object.getPrototypeOf(baseProvider)).forEach(method => {
-        if (typeof baseProvider[method] === 'function' && !customProvider[method]) {
-            customProvider[method] = baseProvider[method].bind(baseProvider);
-        }
-    });
-    
-    // Create a new SDK instance with the custom provider
-    const sdk = new SDK({
-        url: "https://api.1inch.dev/fusion-plus",
-        authKey: process.env.DEV_PORTAL_KEY,
-        blockchainProvider: customProvider
-    });
-    
-    console.log('✅ Created new SDK instance with signed data provider');
-    
-    // Debug: Check what methods the SDK has
-    console.log('🔍 SDK methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(sdk)).filter(name => typeof sdk[name] === 'function'));
-    console.log('🔍 SDK config:', sdk.config);
-    console.log('🔍 SDK blockchainProvider:', sdk.config.blockchainProvider);
-    console.log('🔍 SDK blockchainProvider signTypedData:', typeof sdk.config.blockchainProvider.signTypedData);
-    console.log('🔍 Custom provider signTypedData:', typeof customProvider.signTypedData);
-
-    const preset = quote.getPreset();
-    console.log('🔐 Preset:', preset);
-    
-    if (!preset || typeof preset.secretsCount !== 'number') {
-        throw new Error('Invalid preset - missing secretsCount');
-    }
-    
-    const secretsCount = preset.secretsCount;
-    console.log('🔐 Secrets count:', secretsCount);
-    
-    const secrets = Array.from({ length: secretsCount }).map(() => getRandomBytes32());
-    console.log('🔐 Generated secrets array length:', secrets.length);
-    secrets.forEach((secret, index) => {
-        console.log(`🔐 Secret ${index}:`, secret);
-        console.log(`🔐 Secret ${index} length:`, secret.length);
-        console.log(`🔐 Secret ${index} starts with 0x:`, secret.startsWith('0x'));
-        console.log(`🔐 Secret ${index} hex chars:`, secret.substring(2).length);
-    });
-    
-    const secretHashes = secrets.map((x, index) => {
-        console.log(`🔐 Hashing secret ${index}:`, x);
-        console.log(`🔐 Secret ${index} type:`, typeof x);
-        console.log(`🔐 Secret ${index} length:`, x.length);
-        
-        // Validate hex format
-        if (!x.startsWith('0x') || x.length !== 66) { // 0x + 64 hex chars = 66
-            throw new Error(`Invalid hex format for secret ${index}: ${x}`);
-        }
-        
-        const hash = HashLock.hashSecret(x);
-        console.log(`🔐 Secret ${index} hash:`, hash);
-        return hash;
-    });
-
-    let hashLock;
-    try {
-        if (secretsCount === 1) {
-            console.log('🔐 Creating single fill hash lock with secret:', secrets[0]);
-            hashLock = HashLock.forSingleFill(secrets[0]);
-        } else {
-            console.log('🔐 Creating multiple fills hash lock');
-            const packedHashes = secretHashes.map((secretHash, i) => {
-                console.log(`🔐 Packing hash ${i}:`, secretHash);
-                return solidityPackedKeccak256(['uint64', 'bytes32'], [i, secretHash.toString()]);
+                const hash = HashLock.hashSecret(x);
+                console.log(`🔐 Secret ${index} hash:`, hash);
+                return hash;
             });
-            console.log('🔐 Packed hashes:', packedHashes);
-            hashLock = HashLock.forMultipleFills(packedHashes);
-        }
-        console.log('🔐 Hash lock created successfully:', hashLock);
-    } catch (error) {
-        console.error('❌ Error creating hash lock:', error);
-        throw error;
-    }
 
-    return new Promise((resolve, reject) => {
-        if (approve) {
-            sdk.placeOrder(quote, {
-                walletAddress: walletAddress,
-                hashLock,
-                secretHashes
-            }).then(quoteResponse => {
-                const orderHash = quoteResponse.orderHash;
-                console.log(`Order successfully placed`);
-
-                const intervalId = setInterval(() => {
-                    console.log(`Polling for fills until order status is set to "executed"...`);
-                    sdk.getOrderStatus(orderHash).then(order => {
-                        if (order.status === 'executed') {
-                            console.log(`Order is complete. Exiting.`);
-                            clearInterval(intervalId);
-                            resolve({ success: true, orderHash, status: 'executed' });
-                        }
-                    }).catch(error => {
-                        console.error(`Error: ${JSON.stringify(error, null, 2)}`);
-                        reject(error);
+            // Create hash lock
+            let hashLock;
+            try {
+                if (secretsCount === 1) {
+                    console.log('🔐 Creating single fill hash lock with secret:', secrets[0]);
+                    hashLock = HashLock.forSingleFill(secrets[0]);
+                } else {
+                    console.log('🔐 Creating multiple fills hash lock');
+                    const packedHashes = secretHashes.map((secretHash, i) => {
+                        console.log(`🔐 Packing hash ${i}:`, secretHash);
+                        return solidityPackedKeccak256(['uint64', 'bytes32'], [i, secretHash.toString()]);
                     });
+                    console.log('🔐 Packed hashes:', packedHashes);
+                    hashLock = HashLock.forMultipleFills(packedHashes);
+                }
+                console.log('🔐 Hash lock created successfully:', hashLock);
+            } catch (error) {
+                console.error('❌ Error creating hash lock:', error);
+                throw error;
+            }
 
-                    sdk.getReadyToAcceptSecretFills(orderHash)
-                        .then((fillsObject) => {
-                            if (fillsObject.fills.length > 0) {
-                                fillsObject.fills.forEach(fill => {
-                                    sdk.submitSecret(orderHash, secrets[fill.idx])
-                                        .then(() => {
-                                            console.log(`Fill order found! Secret submitted: ${JSON.stringify(secretHashes[fill.idx], null, 2)}`);
-                                        })
-                                        .catch((error) => {
-                                            console.error(`Error submitting secret: ${JSON.stringify(error, null, 2)}`);
-                                        });
-                                });
-                            }
-                        })
-                        .catch((error) => {
-                            if (error.response) {
-                                console.error('Error getting ready to accept secret fills:', {
-                                    status: error.response.status,
-                                    statusText: error.response.statusText,
-                                    data: error.response.data
-                                });
-                            } else if (error.request) {
-                                console.error('No response received:', error.request);
-                            } else {
-                                console.error('Error', error.message);
-                            }
-                        });
-                }, 5000);
+            // Extract order data from quote
+            const orderData = {
+                salt: preset.salt || Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
+                makerAsset: quote.srcTokenAddress,
+                takerAsset: quote.dstTokenAddress,
+                maker: walletAddress,
+                receiver: '0x0000000000000000000000000000000000000000', // Zero address for receiver
+                makingAmount: quote.srcTokenAmount.toString(),
+                takingAmount: quote.dstTokenAmount.toString(),
+                makerTraits: preset.makerTraits || '0'
+            };
 
-                resolve({ success: true, orderHash, status: 'placed' });
-            }).catch((error) => {
-                console.dir(error, { depth: null });
-                reject(error);
-            });
-        } else {
-            console.log("Approval is not required");
-            resolve({ success: false, message: "Approval is not required" });
+            console.log('🔐 Order data extracted:', orderData);
+
+            // Prepare API request body
+            const requestBody = {
+                order: orderData,
+                srcChainId: parseInt(quote.srcChainId || '1'),
+                signature: eip712Signature,
+                extension: "0x",
+                quoteId: quote.quoteId || "string",
+                secretHashes: secretHashes.map(hash => hash.toString())
+            };
+
+            console.log('🔐 API Request Body:', JSON.stringify(requestBody, null, 2));
+
+            // Make API call to 1inch Fusion+ relayer
+            const url = "https://api.1inch.dev/fusion-plus/relayer/v1.0/submit";
+            
+            const config = {
+                headers: {
+                    Authorization: `Bearer ${process.env.DEV_PORTAL_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            console.log('🔐 Making API call to:', url);
+            console.log('🔐 Using auth key:', process.env.DEV_PORTAL_KEY ? 'Present' : 'Missing');
+
+            const response = await axios.post(url, requestBody, config);
+            
+            console.log('✅ Order submitted successfully!');
+            console.log('✅ Response:', response.data);
+            
+            const orderHash = response.data.orderHash || response.data.hash;
+            
+            // Start polling for order status
+            console.log('🔍 Starting order status polling...');
+            
+            const pollOrderStatus = async () => {
+                try {
+                    const statusUrl = `https://api.1inch.dev/fusion-plus/relayer/v1.0/order/${orderHash}`;
+                    const statusResponse = await axios.get(statusUrl, config);
+                    
+                    console.log('🔍 Order status:', statusResponse.data);
+                    
+                    if (statusResponse.data.status === 'executed') {
+                        console.log('✅ Order executed successfully!');
+                        resolve({ success: true, orderHash, status: 'executed', data: statusResponse.data });
+                        return;
+                    } else if (statusResponse.data.status === 'failed') {
+                        console.error('❌ Order failed:', statusResponse.data);
+                        reject(new Error(`Order failed: ${JSON.stringify(statusResponse.data)}`));
+                        return;
+                    }
+                    
+                    // Continue polling
+                    setTimeout(pollOrderStatus, 5000);
+                    
+                } catch (error) {
+                    console.error('❌ Error polling order status:', error);
+                    // Continue polling even if there's an error
+                    setTimeout(pollOrderStatus, 5000);
+                }
+            };
+            
+            // Start polling after 5 seconds
+            setTimeout(pollOrderStatus, 5000);
+            
+            resolve({ success: true, orderHash, status: 'placed', data: response.data });
+            
+        } catch (error) {
+            console.error('❌ Error in submitOrder:', error);
+            
+            if (error.response) {
+                console.error('❌ API Error Response:', {
+                    status: error.response.status,
+                    statusText: error.response.statusText,
+                    data: error.response.data
+                });
+            }
+            
+            reject(error);
         }
     });
 }

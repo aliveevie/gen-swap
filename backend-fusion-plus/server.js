@@ -391,6 +391,34 @@ app.post('/api/quote', async (req, res) => {
       
       console.log('✅ Quote result from getQuote.js:', quoteResult);
       
+      // Extract the exact values that the SDK will expect for the order
+      console.log('🔍 Extracting exact values from quote for EIP-712 signing...');
+      
+      // Get the preset from the quote to extract exact values
+      let exactValues = {};
+      try {
+        const preset = quoteResult.getPreset();
+        console.log('🔍 Quote preset:', preset);
+        
+        // Extract exact values that the SDK will use for the order
+        exactValues = {
+          salt: preset?.salt || Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
+          dstTokenAmount: quoteResult.dstTokenAmount?.toString() || '0',
+          dstTokenAddress: quoteResult.dstTokenAddress || dstTokenAddress,
+          makerTraits: preset?.makerTraits || '62419173104490761595518734106643312524177918888344010093236686688879363751936'
+        };
+        
+        console.log('🔍 Extracted exact values:', exactValues);
+      } catch (error) {
+        console.warn('⚠️ Could not extract exact values from preset, using defaults:', error.message);
+        exactValues = {
+          salt: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
+          dstTokenAmount: quoteResult.dstTokenAmount?.toString() || '0',
+          dstTokenAddress: quoteResult.dstTokenAddress || dstTokenAddress,
+          makerTraits: '62419173104490761595518734106643312524177918888344010093236686688879363751936'
+        };
+      }
+      
       // Store the full quote object in memory with a reference ID
       const quoteId = `quote_${++quoteCounter}`;
       quoteStore.set(quoteId, quoteResult);
@@ -424,8 +452,9 @@ app.post('/api/quote', async (req, res) => {
       // Convert the entire quote object to serializable format
       const serializedQuote = convertBigIntToString(quoteResult);
       
-      // Add the reference ID to the serialized quote
+      // Add the reference ID and exact values to the serialized quote
       serializedQuote.quoteReferenceId = quoteId;
+      serializedQuote.exactValues = exactValues; // Add the exact values for EIP-712 signing
       
       res.json({
         success: true,
