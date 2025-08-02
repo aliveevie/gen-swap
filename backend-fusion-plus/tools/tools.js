@@ -129,7 +129,7 @@ class DeFiTools {
   }
 
   /**
-   * Get token list for a network from 1inch API
+   * Get token list for a network from 1inch API (v1.2)
    * @param {number} chainId - Chain ID
    * @returns {Promise<Object>} Token list
    */
@@ -139,24 +139,33 @@ class DeFiTools {
         throw new Error('DEV_PORTAL_KEY not configured');
       }
 
-      console.log(`📋 Getting token list for chain ${chainId}...`);
+      console.log(`📋 Getting token list for chain ${chainId} using 1inch API v1.2...`);
 
-      const response = await axios.get(`${this.baseURL}/token/v1.1/${chainId}`, {
+      const url = `https://api.1inch.dev/token/v1.2/${chainId}/custom`;
+
+      const config = {
         headers: {
           'Authorization': `Bearer ${this.devPortalKey}`,
           'Accept': 'application/json'
         },
+        params: {},
+        paramsSerializer: {
+          indexes: null,
+        },
         timeout: 15000
-      });
+      };
 
-      console.log(`✅ Token list retrieved for chain ${chainId}`);
+      const response = await axios.get(url, config);
+
+      console.log(`✅ Token list retrieved for chain ${chainId}:`, response.data);
 
       return {
         success: true,
         data: response.data,
         chainId: chainId,
         tokenCount: response.data?.tokens?.length || 0,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        source: '1inch_token_list_api_v1.2'
       };
 
     } catch (error) {

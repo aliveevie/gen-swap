@@ -1357,6 +1357,17 @@ app.post('/api/ai/chat', async (req, res) => {
       });
     }
 
+    // Check if the message is asking for token list information
+    if (lowerMessage.includes('token list') || lowerMessage.includes('available tokens') || lowerMessage.includes('all tokens')) {
+      // Handle token list queries
+      const result = await handleTokenListQuery(message, context);
+      return res.json({
+        success: true,
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     const result = await aiTools.generateAIResponse(message, context);
     
     res.json({
@@ -1456,6 +1467,38 @@ async function handleWalletBalanceQuery(message, context) {
       success: false,
       error: error.message,
       fallback: 'I can help you check your wallet balances! Please make sure you have connected your wallet and selected a network, then ask me about your balances.'
+    };
+  }
+}
+
+// Helper function to handle token list queries
+async function handleTokenListQuery(message, context) {
+  try {
+    const lowerMessage = message.toLowerCase();
+    
+    // Check if we have a chain ID
+    if (context.fromChain) {
+      console.log('📋 Handling token list query for chain:', context.fromChain);
+      
+      const result = await aiTools.getTokenListAnalysis(parseInt(context.fromChain));
+      return {
+        success: true,
+        response: result.aiAnalysis,
+        tokenListData: result.tokenListData,
+        tokenAnalysis: result.tokenAnalysis,
+        type: 'token_list'
+      };
+    }
+    
+    // Default to general AI response
+    return await aiTools.generateAIResponse(message, context);
+    
+  } catch (error) {
+    console.error('❌ Token list query handling failed:', error);
+    return {
+      success: false,
+      error: error.message,
+      fallback: 'I can help you explore available tokens! Please select a network first, then ask me about the token list or available tokens.'
     };
   }
 }
@@ -1668,6 +1711,37 @@ app.post('/api/ai/wallet-balance', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get wallet balance analysis'
+    });
+  }
+});
+
+// AI Token List Analysis endpoint
+app.post('/api/ai/token-list', async (req, res) => {
+  try {
+    const { chainId } = req.body;
+    
+    console.log('📋 AI Token list analysis request received for chain:', chainId);
+    
+    if (!chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Chain ID is required'
+      });
+    }
+
+    const result = await aiTools.getTokenListAnalysis(parseInt(chainId));
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Token list analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get token list analysis'
     });
   }
 });

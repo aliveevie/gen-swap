@@ -1664,6 +1664,16 @@ const SwapInterface = () => {
           };
           break;
 
+        case 'token-list':
+          if (!fromChain) {
+            throw new Error('Please select a network first');
+          }
+          endpoint = '/ai/token-list';
+          requestBody = {
+            chainId: fromChain
+          };
+          break;
+
         case 'optimize-swap':
           if (!fromToken || !toToken || !fromAmount) {
             throw new Error('Please set up a swap first to optimize');
@@ -2520,6 +2530,15 @@ const SwapInterface = () => {
                       className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
                     >
                       💰 Wallet Balance
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('token-list')}
+                      disabled={isChatLoading}
+                      className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
+                    >
+                      📋 Token List
                     </Button>
                     <Button
                       variant="outline"

@@ -547,6 +547,200 @@ Make the response professional, data-driven, and actionable. Use proper formatti
   }
 
   /**
+   * Get token list analysis with AI insights
+   * @param {number} chainId - Chain ID
+   * @returns {Promise<Object>} Token list analysis
+   */
+  async getTokenListAnalysis(chainId) {
+    try {
+      console.log(`🤖 Getting token list analysis for chain ${chainId}...`);
+
+      // Import the tools module to get token list data
+      const { getTokenList } = require('./tools.js');
+      
+      const tokenListResult = await getTokenList(chainId);
+      
+      if (!tokenListResult.success) {
+        throw new Error(`Failed to get token list: ${tokenListResult.error}`);
+      }
+
+      const tokenListData = tokenListResult.data;
+      
+      // Analyze token categories and types
+      const tokenAnalysis = this.analyzeTokenList(tokenListData, chainId);
+      
+      const prompt = `Analyze this token list data and provide comprehensive insights:
+
+Token List Analysis for Chain ${chainId}:
+
+Token Statistics:
+- Total Tokens: ${tokenListData?.tokens?.length || 0}
+- Token Categories: ${tokenAnalysis.categories.join(', ')}
+- Notable Tokens: ${tokenAnalysis.notableTokens.join(', ')}
+- Market Coverage: ${tokenAnalysis.marketCoverage}
+
+Token Distribution:
+${tokenAnalysis.categoryBreakdown.map(cat => `- ${cat.name}: ${cat.count} tokens (${cat.percentage}%)`).join('\n')}
+
+Please provide a professional analysis with the following structure:
+
+## Network Overview
+- Chain characteristics and token ecosystem
+- Market maturity and diversity assessment
+- Network-specific advantages
+
+## Token Ecosystem Analysis
+- Token diversity and distribution
+- Notable projects and protocols
+- Market coverage and gaps
+
+## DeFi Opportunities
+- Available DeFi protocols and tokens
+- Yield farming and liquidity opportunities
+- Emerging trends and new tokens
+
+## Market Insights
+- Token categories and their significance
+- Popular tokens and their use cases
+- Network-specific token advantages
+
+## Strategic Recommendations
+- Token selection strategies
+- Portfolio diversification opportunities
+- Risk assessment and considerations
+
+Make the response professional, data-driven, and actionable. Use proper formatting with markdown.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { tokenListData, tokenAnalysis, chainId });
+      
+      return {
+        success: true,
+        tokenListData: tokenListData,
+        tokenAnalysis: tokenAnalysis,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        chainId: chainId,
+        tokenCount: tokenListResult.tokenCount,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Token list analysis failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get token list analysis',
+        chainId: chainId,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Helper function to analyze token list data
+   * @param {Object} tokenListData - Token list data from API
+   * @param {number} chainId - Chain ID
+   * @returns {Object} Token analysis
+   */
+  analyzeTokenList(tokenListData, chainId) {
+    const tokens = tokenListData?.tokens || [];
+    const categories = new Set();
+    const notableTokens = [];
+    
+    // Define token categories
+    const categoryMappings = {
+      'USDC': 'Stablecoins',
+      'USDT': 'Stablecoins', 
+      'DAI': 'Stablecoins',
+      'WETH': 'Wrapped Tokens',
+      'WBTC': 'Wrapped Tokens',
+      'WMATIC': 'Wrapped Tokens',
+      'ETH': 'Native Tokens',
+      'MATIC': 'Native Tokens',
+      'ARB': 'Governance Tokens',
+      'UNI': 'DeFi Tokens',
+      'AAVE': 'DeFi Tokens',
+      'CRV': 'DeFi Tokens',
+      'COMP': 'DeFi Tokens'
+    };
+    
+    // Analyze tokens
+    tokens.forEach(token => {
+      const symbol = token.symbol || 'UNKNOWN';
+      
+      // Categorize tokens
+      if (categoryMappings[symbol]) {
+        categories.add(categoryMappings[symbol]);
+      } else if (symbol.includes('USD') || symbol.includes('USDC') || symbol.includes('USDT')) {
+        categories.add('Stablecoins');
+      } else if (symbol.startsWith('W')) {
+        categories.add('Wrapped Tokens');
+      } else if (symbol.includes('LP') || symbol.includes('UNI')) {
+        categories.add('LP Tokens');
+      } else {
+        categories.add('Other Tokens');
+      }
+      
+      // Identify notable tokens
+      if (['USDC', 'USDT', 'WETH', 'WBTC', 'DAI', 'UNI', 'AAVE'].includes(symbol)) {
+        notableTokens.push(symbol);
+      }
+    });
+    
+    // Calculate category breakdown
+    const categoryBreakdown = Array.from(categories).map(category => {
+      const count = tokens.filter(token => {
+        const symbol = token.symbol || 'UNKNOWN';
+        if (category === 'Stablecoins') {
+          return symbol.includes('USD') || symbol.includes('USDC') || symbol.includes('USDT') || symbol === 'DAI';
+        } else if (category === 'Wrapped Tokens') {
+          return symbol.startsWith('W') && symbol !== 'WMATIC';
+        } else if (category === 'LP Tokens') {
+          return symbol.includes('LP') || symbol.includes('UNI');
+        } else if (category === 'Other Tokens') {
+          return !symbol.includes('USD') && !symbol.startsWith('W') && !symbol.includes('LP');
+        }
+        return false;
+      }).length;
+      
+      return {
+        name: category,
+        count: count,
+        percentage: tokens.length > 0 ? Math.round((count / tokens.length) * 100) : 0
+      };
+    });
+    
+    return {
+      categories: Array.from(categories),
+      notableTokens: notableTokens,
+      categoryBreakdown: categoryBreakdown,
+      marketCoverage: this.getMarketCoverage(chainId, tokens.length)
+    };
+  }
+
+  /**
+   * Helper function to get market coverage assessment
+   * @param {number} chainId - Chain ID
+   * @param {number} tokenCount - Number of tokens
+   * @returns {string} Market coverage assessment
+   */
+  getMarketCoverage(chainId, tokenCount) {
+    const networkInfo = {
+      1: { name: 'Ethereum', expectedTokens: 1000 },
+      42161: { name: 'Arbitrum', expectedTokens: 500 },
+      137: { name: 'Polygon', expectedTokens: 800 },
+      8453: { name: 'Base', expectedTokens: 300 }
+    };
+    
+    const network = networkInfo[chainId] || { name: 'Unknown', expectedTokens: 500 };
+    const coverage = (tokenCount / network.expectedTokens) * 100;
+    
+    if (coverage >= 80) return 'Excellent';
+    if (coverage >= 60) return 'Good';
+    if (coverage >= 40) return 'Moderate';
+    return 'Limited';
+  }
+
+  /**
    * Get comprehensive price analysis for multiple tokens
    * @param {Array} tokens - Array of {chainId, tokenAddress, currency} objects
    * @returns {Promise<Object>} Comprehensive price analysis
@@ -661,5 +855,6 @@ module.exports = {
   getGasPriceWithAnalysis: (chainId) => aiTools.getGasPriceWithAnalysis(chainId),
   getComprehensivePriceAnalysis: (tokens) => aiTools.getComprehensivePriceAnalysis(tokens),
   getWalletBalanceAnalysis: (chainId, walletAddress) => aiTools.getWalletBalanceAnalysis(chainId, walletAddress),
+  getTokenListAnalysis: (chainId) => aiTools.getTokenListAnalysis(chainId),
   validateConfiguration: () => aiTools.validateConfiguration()
 }; 
