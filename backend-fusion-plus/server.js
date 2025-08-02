@@ -14,6 +14,8 @@ const { createSDKWithProvider, getAuthKey, validateSDK } = require('./functions/
 const { Swapping } = require('./functions/orderWithGlobal.js');
 // Import required 1inch SDK components (for other functions)
 const { SDK, NetworkEnum, HashLock } = require('@1inch/cross-chain-sdk');
+// Import 1inch Price Feeds API functions
+const { priceFeedsAPI } = require('./functions/priceFeeds.js');
 
 const app = express();
 const PORT = process.env.PORT || 9056;
@@ -1179,6 +1181,138 @@ app.post('/api/prepare-approval', async (req, res) => {
   }
 });
 
+// ========================================
+// 1INCH DATA APIs - PRICE FEEDS API
+// ========================================
+
+// Get token price from 1inch Price Feeds API
+app.get('/api/price-feeds/:chainId/:tokenAddress', async (req, res) => {
+  try {
+    const { chainId, tokenAddress } = req.params;
+    
+    console.log('💰 Getting token price from 1inch Price Feeds API...');
+    console.log('🔗 Chain ID:', chainId);
+    console.log('🪙 Token Address:', tokenAddress);
+    
+    const result = await priceFeedsAPI.getTokenPrice(chainId, tokenAddress, 'USD');
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(500).json(result);
+    }
+
+  } catch (error) {
+    console.error('❌ Error getting token price:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get token price from 1inch Price Feeds API'
+    });
+  }
+});
+
+// Get multiple token prices from 1inch Price Feeds API
+app.post('/api/price-feeds/batch', async (req, res) => {
+  try {
+    const { tokens } = req.body; // Array of {chainId, tokenAddress}
+    
+    console.log('💰 Getting batch token prices from 1inch Price Feeds API...');
+    console.log('📋 Tokens count:', tokens?.length || 0);
+    
+    const result = await priceFeedsAPI.getBatchTokenPrices(tokens);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(500).json(result);
+    }
+
+  } catch (error) {
+    console.error('❌ Error getting batch token prices:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get batch token prices from 1inch Price Feeds API'
+    });
+  }
+});
+
+// Get token price with USD conversion from 1inch Price Feeds API
+app.get('/api/price-feeds/:chainId/:tokenAddress/usd', async (req, res) => {
+  try {
+    const { chainId, tokenAddress } = req.params;
+    
+    console.log('💰 Getting USD token price from 1inch Price Feeds API...');
+    console.log('🔗 Chain ID:', chainId);
+    console.log('🪙 Token Address:', tokenAddress);
+    
+    const result = await priceFeedsAPI.getTokenPriceWithCurrency(chainId, tokenAddress, 'USD');
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(500).json(result);
+    }
+
+  } catch (error) {
+    console.error('❌ Error getting USD token price:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get USD token price from 1inch Price Feeds API'
+    });
+  }
+});
+
+// Get price comparison between two tokens from 1inch Price Feeds API
+app.get('/api/price-feeds/compare/:chainId/:token1Address/:token2Address', async (req, res) => {
+  try {
+    const { chainId, token1Address, token2Address } = req.params;
+    const { currency = 'USD' } = req.query;
+    
+    console.log('⚖️ Getting price comparison from 1inch Price Feeds API...');
+    console.log('🔗 Chain ID:', chainId);
+    console.log('🪙 Token 1:', token1Address);
+    console.log('🪙 Token 2:', token2Address);
+    console.log('💱 Currency:', currency);
+    
+    const result = await priceFeedsAPI.getPriceComparison(chainId, token1Address, token2Address, currency);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(500).json(result);
+    }
+
+  } catch (error) {
+    console.error('❌ Error getting price comparison:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get price comparison from 1inch Price Feeds API'
+    });
+  }
+});
+
+// Validate 1inch Price Feeds API status
+app.get('/api/price-feeds/status', async (req, res) => {
+  try {
+    console.log('🔍 Validating 1inch Price Feeds API status...');
+    
+    const result = await priceFeedsAPI.validateAPI();
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Error validating Price Feeds API:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to validate 1inch Price Feeds API'
+    });
+  }
+});
+
 // Complete swap execution (TRUE DeFi - user wallet handles everything)
 app.post('/api/complete-swap', async (req, res) => {
   try {
@@ -1243,6 +1377,9 @@ app.listen(PORT, () => {
   console.log(`🔍 Order Status: http://localhost:${PORT}/api/order-status/:orderHash`);
   console.log(`🔐 Token Approval: http://localhost:${PORT}/api/prepare-approval`);
   console.log(`🎉 Swap Completion: http://localhost:${PORT}/api/complete-swap`);
+  console.log(`💰 Price Feeds API: http://localhost:${PORT}/api/price-feeds`);
+  console.log(`⚖️ Price Comparison: http://localhost:${PORT}/api/price-feeds/compare`);
+  console.log(`🔍 Price Feeds Status: http://localhost:${PORT}/api/price-feeds/status`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
   console.log(`🔧 TRUE DeFi Status: ${process.env.DEV_PORTAL_KEY ? '✅ Ready for swaps' : '⚠️  DEV_PORTAL_KEY required'}`);
   console.log(`👤 User Role: Sign ALL transactions in their own wallet`);
