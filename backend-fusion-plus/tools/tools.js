@@ -172,7 +172,7 @@ class DeFiTools {
   }
 
   /**
-   * Get wallet balances from 1inch API
+   * Get wallet balances from 1inch API (v1.2)
    * @param {number} chainId - Chain ID
    * @param {string} walletAddress - Wallet address
    * @returns {Promise<Object>} Wallet balances
@@ -183,17 +183,25 @@ class DeFiTools {
         throw new Error('DEV_PORTAL_KEY not configured');
       }
 
-      console.log(`💰 Getting wallet balances for ${walletAddress} on chain ${chainId}...`);
+      console.log(`💰 Getting wallet balances for ${walletAddress} on chain ${chainId} using 1inch API v1.2...`);
 
-      const response = await axios.get(`${this.baseURL}/balance/v1.1/${chainId}/${walletAddress}`, {
+      const url = `https://api.1inch.dev/balance/v1.2/${chainId}/balances/${walletAddress}`;
+
+      const config = {
         headers: {
           'Authorization': `Bearer ${this.devPortalKey}`,
           'Accept': 'application/json'
         },
+        params: {},
+        paramsSerializer: {
+          indexes: null,
+        },
         timeout: 10000
-      });
+      };
 
-      console.log(`✅ Wallet balances retrieved for ${walletAddress}`);
+      const response = await axios.get(url, config);
+
+      console.log(`✅ Wallet balances retrieved for ${walletAddress}:`, response.data);
 
       return {
         success: true,
@@ -201,7 +209,8 @@ class DeFiTools {
         chainId: chainId,
         walletAddress: walletAddress,
         balanceCount: response.data?.balances?.length || 0,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        source: '1inch_wallet_balances_api_v1.2'
       };
 
     } catch (error) {

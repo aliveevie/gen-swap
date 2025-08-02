@@ -1346,6 +1346,17 @@ app.post('/api/ai/chat', async (req, res) => {
       });
     }
 
+    // Check if the message is asking for wallet balance information
+    if (lowerMessage.includes('balance') || lowerMessage.includes('wallet') || lowerMessage.includes('portfolio')) {
+      // Handle wallet balance queries
+      const result = await handleWalletBalanceQuery(message, context);
+      return res.json({
+        success: true,
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     const result = await aiTools.generateAIResponse(message, context);
     
     res.json({
@@ -1411,6 +1422,40 @@ async function handlePriceQuery(message, context) {
       success: false,
       error: error.message,
       fallback: 'I can help you check prices! Please make sure you have selected a token and network, then ask me about the price or gas fees.'
+    };
+  }
+}
+
+// Helper function to handle wallet balance queries
+async function handleWalletBalanceQuery(message, context) {
+  try {
+    const lowerMessage = message.toLowerCase();
+    
+    // Check if we have a wallet address and chain ID
+    if (context.address && context.fromChain) {
+      console.log('💰 Handling wallet balance query for:', context.address, 'on chain:', context.fromChain);
+      
+      const result = await aiTools.getWalletBalanceAnalysis(
+        parseInt(context.fromChain), 
+        context.address
+      );
+      return {
+        success: true,
+        response: result.aiAnalysis,
+        balanceData: result.balanceData,
+        type: 'wallet_balance'
+      };
+    }
+    
+    // Default to general AI response
+    return await aiTools.generateAIResponse(message, context);
+    
+  } catch (error) {
+    console.error('❌ Wallet balance query handling failed:', error);
+    return {
+      success: false,
+      error: error.message,
+      fallback: 'I can help you check your wallet balances! Please make sure you have connected your wallet and selected a network, then ask me about your balances.'
     };
   }
 }
@@ -1592,6 +1637,37 @@ app.post('/api/ai/comprehensive-price-analysis', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get comprehensive price analysis'
+    });
+  }
+});
+
+// AI Wallet Balance Analysis endpoint
+app.post('/api/ai/wallet-balance', async (req, res) => {
+  try {
+    const { chainId, walletAddress } = req.body;
+    
+    console.log('💰 AI Wallet balance analysis request received for:', { chainId, walletAddress });
+    
+    if (!chainId || !walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Chain ID and wallet address are required'
+      });
+    }
+
+    const result = await aiTools.getWalletBalanceAnalysis(parseInt(chainId), walletAddress);
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Wallet balance analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get wallet balance analysis'
     });
   }
 });

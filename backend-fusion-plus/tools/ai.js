@@ -378,6 +378,66 @@ Make it practical for users planning transactions.`;
   }
 
   /**
+   * Get wallet balance analysis with AI insights
+   * @param {number} chainId - Chain ID
+   * @param {string} walletAddress - Wallet address
+   * @returns {Promise<Object>} Wallet balance analysis
+   */
+  async getWalletBalanceAnalysis(chainId, walletAddress) {
+    try {
+      console.log(`🤖 Getting wallet balance analysis for ${walletAddress} on chain ${chainId}...`);
+
+      // Import the tools module to get wallet balance data
+      const { getWalletBalances } = require('./tools.js');
+      
+      const balanceResult = await getWalletBalances(chainId, walletAddress);
+      
+      if (!balanceResult.success) {
+        throw new Error(`Failed to get wallet balances: ${balanceResult.error}`);
+      }
+
+      const balanceData = balanceResult.data;
+      const prompt = `Analyze this wallet balance data and provide insights:
+
+Wallet Balance Data for ${walletAddress} on Chain ${chainId}:
+${JSON.stringify(balanceData, null, 2)}
+
+Please provide:
+1. Portfolio overview and total value
+2. Token distribution analysis
+3. Notable holdings and their significance
+4. Portfolio diversification assessment
+5. Potential DeFi opportunities
+6. Risk assessment and recommendations
+
+Make it user-friendly and actionable for DeFi users.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { balanceData, chainId, walletAddress });
+      
+      return {
+        success: true,
+        balanceData: balanceData,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        chainId: chainId,
+        walletAddress: walletAddress,
+        balanceCount: balanceResult.balanceCount,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Wallet balance analysis failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get wallet balance analysis',
+        chainId: chainId,
+        walletAddress: walletAddress,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Get comprehensive price analysis for multiple tokens
    * @param {Array} tokens - Array of {chainId, tokenAddress, currency} objects
    * @returns {Promise<Object>} Comprehensive price analysis
@@ -491,5 +551,6 @@ module.exports = {
   getTokenPriceWithAnalysis: (chainId, tokenAddress, currency) => aiTools.getTokenPriceWithAnalysis(chainId, tokenAddress, currency),
   getGasPriceWithAnalysis: (chainId) => aiTools.getGasPriceWithAnalysis(chainId),
   getComprehensivePriceAnalysis: (tokens) => aiTools.getComprehensivePriceAnalysis(tokens),
+  getWalletBalanceAnalysis: (chainId, walletAddress) => aiTools.getWalletBalanceAnalysis(chainId, walletAddress),
   validateConfiguration: () => aiTools.validateConfiguration()
 }; 
