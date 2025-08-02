@@ -178,7 +178,7 @@ export class ClientSwapper {
   }
 
   // Get quote through server (to avoid CORS) - Step 1
-  async getQuote(swapParams: SwapParams, apiBaseUrl: string = 'http://localhost:9056/api'): Promise<any> {
+  async getQuote(swapParams: SwapParams, apiBaseUrl: string = 'https://gen-swap-server.vercel.app/api'): Promise<any> {
     console.log('🔍 Step 1: Getting quote through server (CORS proxy)...');
     
     try {
@@ -220,7 +220,7 @@ export class ClientSwapper {
   }
 
   // Complete 4-Step Hybrid TRUE DeFi Flow
-  async handleTokenApprovalAndSwap(swapParams: SwapParams, apiBaseUrl: string = 'http://localhost:9056/api'): Promise<SwapResult> {
+  async handleTokenApprovalAndSwap(swapParams: SwapParams, apiBaseUrl: string = 'https://gen-swap-server.vercel.app/api'): Promise<SwapResult> {
     if (!this.isInitialized || !this.signer) {
       throw new Error('ClientSwapper not initialized. Call initialize() first.');
     }
