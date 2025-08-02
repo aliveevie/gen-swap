@@ -45,6 +45,10 @@ function submitOrder(quote, approve, walletAddress, eip712Signature, userRpcUrl)
             // Extract order details from quote
             const preset = quote.getPreset();
             console.log('🔐 Preset:', preset);
+            console.log('🔐 Preset makerTraits:', preset.makerTraits);
+            console.log('🔐 Preset traits:', preset.traits);
+            console.log('🔐 Preset extension:', preset.extension);
+            console.log('🔐 Preset extensionData:', preset.extensionData);
             
             if (!preset || typeof preset.secretsCount !== 'number') {
                 throw new Error('Invalid preset - missing secretsCount');
@@ -100,18 +104,22 @@ function submitOrder(quote, approve, walletAddress, eip712Signature, userRpcUrl)
                 receiver: '0x0000000000000000000000000000000000000000', // Zero address for receiver
                 makingAmount: quote.srcTokenAmount.toString(),
                 takingAmount: quote.dstTokenAmount.toString(),
-                makerTraits: preset.makerTraits || '0'
+                makerTraits: preset.makerTraits || preset.traits || '0'
             };
 
             console.log('🔐 Order data extracted:', orderData);
+            console.log('🔐 Preset data:', preset);
+
+            // Get extension data from preset or quote
+            const extension = preset.extension || preset.extensionData || "0x";
 
             // Prepare API request body
             const requestBody = {
                 order: orderData,
                 srcChainId: parseInt(quote.srcChainId || '1'),
                 signature: eip712Signature,
-                extension: "0x",
-                quoteId: quote.quoteId || "string",
+                extension: extension,
+                quoteId: quote.quoteId || quote.id || "string",
                 secretHashes: secretHashes.map(hash => hash.toString())
             };
 

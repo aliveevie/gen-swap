@@ -1861,7 +1861,9 @@ const SwapInterface = () => {
             "type": "function"
           }],
           functionName: 'approve',
-          args: [approvalTx.data.slice(10, 50) as `0x${string}`, BigInt(approvalTx.data.slice(50))]
+          args: [approvalTx.data.slice(10, 50) as `0x${string}`, BigInt(approvalTx.data.slice(50))],
+          chain: getCurrentChain(),
+          account: address
         });
         
         console.log('✅ Token approval submitted:', approvalResult);
