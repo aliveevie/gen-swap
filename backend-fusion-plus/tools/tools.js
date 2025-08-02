@@ -625,22 +625,13 @@ class DeFiTools {
           source: '1inch_fusion_intent_api_v2.0'
         };
       } catch (error) {
-        console.log(`⚠️ Fusion Intent order submission failed, using fallback:`, error.message);
-        
-        // Fallback: Create a mock order response for testing
-        const mockOrderHash = `0x${Math.random().toString(16).substr(2, 40)}${Date.now().toString(16)}`;
+        console.error(`❌ Fusion Intent order submission failed:`, error.message);
         
         return {
-          success: true,
-          data: {
-            orderHash: mockOrderHash,
-            status: 'submitted',
-            message: 'Mock order submitted successfully'
-          },
+          success: false,
+          error: error.message || 'Failed to submit Fusion Intent order',
           chainId: chainId,
-          orderHash: mockOrderHash,
-          timestamp: new Date().toISOString(),
-          source: 'mock_fusion_intent_order'
+          timestamp: new Date().toISOString()
         };
       }
 
@@ -709,31 +700,14 @@ class DeFiTools {
           source: '1inch_fusion_intent_api_v2.0'
         };
       } catch (error) {
-        console.log(`⚠️ Fusion Intent quote failed, using fallback:`, error.message);
-        
-        // Fallback: Create a mock quote for testing
-        const mockQuote = {
-          quoteId: `quote_${Date.now()}`,
-          srcTokenAmount: amount,
-          dstTokenAmount: (parseInt(amount) * 0.995).toString(), // 0.5% fee
-          srcTokenAddress,
-          dstTokenAddress,
-          srcChainId,
-          dstChainId,
-          walletAddress,
-          salt: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
-          makerTraits: '0'
-        };
-        
-        console.log(`✅ Mock Fusion Intent quote created:`, mockQuote);
+        console.error(`❌ Fusion Intent quote failed:`, error.message);
         
         return {
-          success: true,
-          data: mockQuote,
+          success: false,
+          error: error.message || 'Failed to get Fusion Intent quote',
           srcChainId,
           dstChainId,
-          timestamp: new Date().toISOString(),
-          source: 'mock_fusion_intent_quote'
+          timestamp: new Date().toISOString()
         };
       }
 

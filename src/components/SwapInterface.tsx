@@ -1730,71 +1730,82 @@ const SwapInterface = () => {
   };
 
   // Handle Fusion Intent swap from chat
+  // Handle chat swap with natural language parsing (EXACT SAME PATTERN AS MAIN SWAP)
   const handleChatSwap = async (swapData: any) => {
     try {
       console.log('🚀 Processing chat swap request:', swapData);
       
-      // Update UI state with parsed data
-      setFromChain(swapData.fromChain);
-      setToChain(swapData.toChain);
-      setFromToken(swapData.token);
-      setToToken(swapData.token); // Default to same token
-      setFromAmount(swapData.amount.toString());
-      
-      // Wait for state updates
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Use the same wallet detection pattern as main swap function
-      console.log('🔍 Wallet connection status:', { isConnected, address });
-      
-      // Check if wallet is connected (same as handleSwap)
+      // Check if wallet is connected (EXACT SAME AS MAIN SWAP)
       if (!isConnected || !address) {
         console.log('❌ Wallet not connected');
         return {
           success: false,
-          message: '❌ **Wallet Not Connected**\n\nPlease connect your wallet first to execute this swap:\n\n1. **Click "Connect Wallet"** in the top right of the app\n2. **Unlock your wallet** and approve the connection\n3. **Try the swap request again**\n\nMake sure your wallet is unlocked and you\'re on the correct network.'
+          message: '❌ **Wallet Not Connected**\n\nPlease connect your wallet first to execute this swap.'
         };
       }
       
       console.log('✅ Wallet connection verified successfully');
       
-      // Get quote using existing Fusion Intent API
-      const quoteData = await getFusionIntentQuote();
+      // Get quote from Fusion Intent API (EXACT SAME AS MAIN SWAP - NO APPROVAL YET)
+      console.log('📡 Getting Fusion Intent quote...');
       
-      if (!quoteData) {
-        return {
-          success: false,
-          message: 'Failed to get quote for this swap. Please check your inputs.'
-        };
-      }
+      // Use the same quote parameters as main swap
+      const srcTokenAddress = getTokenAddress(swapData.fromChain, swapData.token);
+      const dstTokenAddress = getTokenAddress(swapData.toChain, swapData.token);
+      const weiAmount = Math.floor(swapData.amount * Math.pow(10, getTokenDecimals(swapData.token))).toString();
       
-      // Calculate expected output amount
-      const expectedOutput = parseFloat(quoteData.data.dstTokenAmount) / Math.pow(10, getTokenDecimals(swapData.token));
-      
-      return {
-        success: true,
-        message: `📊 **Quote Received!**\n\n**Swap Details:**\n• From: ${swapData.amount} ${swapData.token} on ${swapData.fromChain}\n• To: ${expectedOutput.toFixed(6)} ${swapData.token} on ${swapData.toChain}\n\n**Source:** ${quoteData.data.source || '1inch API'}\n\n**Ready to execute swap!**`,
-        quoteData: quoteData,
-        swapData: swapData,
-        expectedOutput: expectedOutput,
-        requiresConfirmation: true
+      const quoteParams = {
+        srcChainId: parseInt(swapData.fromChain),
+        dstChainId: parseInt(swapData.toChain),
+        srcTokenAddress: srcTokenAddress,
+        dstTokenAddress: dstTokenAddress,
+        amount: weiAmount,
+        walletAddress: address,
+        approve: false // NO APPROVAL - just getting quote (EXACT SAME AS MAIN SWAP)
       };
+      
+      console.log('📡 Getting quote from backend:', quoteParams);
+
+      const response = await fetch(`${API_BASE_URL}/quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(quoteParams)
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.data.quote && data.data.quote.quoteReferenceId) {
+        console.log('✅ Quote received from backend:', data.data.quote);
+        console.log('✅ Quote reference ID:', data.data.quote.quoteReferenceId);
+        
+        // Show confirmation button in chat (EXACT SAME AS MAIN SWAP - NO APPROVAL YET)
+        return {
+          success: true,
+          message: `🎯 **Quote Ready!**\n\n**Swap Details:**\n• From: ${swapData.amount} ${swapData.token} on ${swapData.fromChain}\n• To: ${swapData.toChain}\n• Expected: ${data.data.quote.dstTokenAmount} tokens\n\n**Ready to execute?** Click the button below to approve and sign.`,
+          quoteData: data.data,
+          swapData: swapData
+        };
+      } else {
+        throw new Error(data.error || 'Failed to get quote');
+      }
       
     } catch (error) {
       console.error('❌ Chat swap failed:', error);
       return {
         success: false,
-        message: `Swap failed: ${error.message || 'Unknown error'}`
+        message: `❌ **Swap Failed**\n\nError: ${error.message}\n\nPlease try again.`
       };
     }
   };
 
-  // Execute the confirmed swap
+  // Execute the confirmed swap (EXACT SAME PATTERN AS MAIN SWAP)
   const executeChatSwap = async (quoteData: any, swapData: any) => {
     try {
       console.log('🚀 Executing confirmed chat swap:', { quoteData, swapData });
       
-      // Step 1: Check and handle token approval
+      // Step 1: Check and handle token approval (EXACT SAME AS MAIN SWAP)
       const tokenAddress = getTokenAddress(swapData.fromChain, swapData.token);
       const spenderAddress = '0x111111125421ca6dc452d289314280a0f8842a65';
       const amount = Math.floor(swapData.amount * Math.pow(10, getTokenDecimals(swapData.token))).toString();
@@ -1806,7 +1817,7 @@ const SwapInterface = () => {
       if (needsApproval) {
         console.log('🔐 Token approval required');
         
-        // Prepare approval transaction
+        // Prepare approval transaction (EXACT SAME AS MAIN SWAP)
         const approvalParams = {
           tokenAddress: tokenAddress,
           spenderAddress: spenderAddress,
@@ -1827,8 +1838,14 @@ const SwapInterface = () => {
           throw new Error('Failed to prepare approval transaction');
         }
         
-        // Execute approval transaction
+        // Execute approval transaction (EXACT SAME AS MAIN SWAP)
         const approvalTx = approvalData.data.approvalTransaction;
+        
+        toast({
+          title: "Approve Tokens",
+          description: "Please approve the token spending in your wallet...",
+        });
+        
         const approvalResult = await writeContract({
           address: approvalTx.to as `0x${string}`,
           abi: [{
@@ -1848,40 +1865,97 @@ const SwapInterface = () => {
         });
         
         console.log('✅ Token approval submitted:', approvalResult);
+        
+        // Wait for approval to be confirmed
+        toast({
+          title: "Approval Submitted",
+          description: "Waiting for approval confirmation...",
+        });
       }
       
-      // Step 2: Create order structure for Fusion Intent
-      const orderData = {
-        order: {
-          salt: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
-          makerAsset: tokenAddress,
-          takerAsset: getTokenAddress(swapData.toChain, swapData.token),
-          maker: address,
-          receiver: '0x0000000000000000000000000000000000000000',
-          makingAmount: amount,
-          takingAmount: quoteData.data.dstTokenAmount || '0',
-          makerTraits: '0'
-        },
-        extension: '0x',
-        quoteId: quoteData.data.quoteId || 'default'
+      // Step 2: Use exact same pattern as main swap's processApprovedSwap
+      if (!quoteData.quote || !address) {
+        throw new Error('Missing required data for swap processing');
+      }
+
+      // Check if we have a proper quote object with reference ID
+      if (!quoteData.quote.quoteReferenceId) {
+        throw new Error('Quote object missing reference ID');
+      }
+      
+      console.log('✅ Quote object has reference ID:', quoteData.quote.quoteReferenceId);
+
+      // Get the RPC URL from user's connected network (EXACT SAME AS MAIN SWAP)
+      const getRpcUrl = (chainId: string) => {
+        const rpcUrls = {
+          '1': 'https://eth.llamarpc.com', // Ethereum
+          '42161': 'https://arb1.arbitrum.io/rpc', // Arbitrum
+          '8453': 'https://mainnet.base.org', // Base
+          '137': 'https://polygon-rpc.com', // Polygon
+          '56': 'https://bsc-dataseed.binance.org', // BSC
+          '43114': 'https://api.avax.network/ext/bc/C/rpc', // Avalanche
+          '10': 'https://mainnet.optimism.io', // Optimism
+          '250': 'https://rpc.ftm.tools' // Fantom
+        };
+        return rpcUrls[chainId] || 'https://eth.llamarpc.com';
       };
-      
-      console.log('📋 Order data prepared:', orderData);
-      
-      // Step 3: Request user signature (same EIP-712 structure as main swap)
-      const signature = await requestFusionIntentSignature(orderData, address);
-      
-      // Step 4: Submit to Fusion Intent API
-      const submitResult = await submitFusionIntentOrder({
-        ...orderData,
-        signature: signature
+
+      const userRpcUrl = getRpcUrl(swapData.fromChain);
+      console.log('🌐 User RPC URL for chain', swapData.fromChain, ':', userRpcUrl);
+
+      // Use the stored quote data with reference ID and signature (EXACT SAME AS MAIN SWAP)
+      const swapParams = {
+        srcChainId: parseInt(swapData.fromChain),
+        dstChainId: parseInt(swapData.toChain),
+        srcTokenAddress: getTokenAddress(swapData.fromChain, swapData.token),
+        dstTokenAddress: getTokenAddress(swapData.toChain, swapData.token),
+        amount: Math.floor(swapData.amount * Math.pow(10, getTokenDecimals(swapData.token))).toString(),
+        walletAddress: address,
+        approve: true, // Send approval status (EXACT SAME AS MAIN SWAP)
+        approvalTxHash: 'pending', // Will be updated after approval
+        eip712Signature: 'pending', // Will be updated after signature
+        userRpcUrl: userRpcUrl, // Send the user's RPC URL (EXACT SAME AS MAIN SWAP)
+        quote: {
+          quoteReferenceId: quoteData.quote.quoteReferenceId
+        } // Only send the reference ID, not the full quote object (EXACT SAME AS MAIN SWAP)
+      };
+
+      console.log('🚀 Sending approved swap request to backend:', {
+        ...swapParams,
+        quote: { quoteReferenceId: quoteData.quote.quoteReferenceId }
       });
-      
-      return {
-        success: true,
-        message: `🎉 **Swap Executed Successfully!**\n\n**Order Hash:** ${submitResult.data?.orderHash || 'N/A'}\n**Status:** Submitted to Fusion Intent\n**Source:** ${submitResult.data?.source || '1inch API'}\n\nYour swap is now being processed!`,
-        orderHash: submitResult.data?.orderHash
-      };
+
+      console.log('✅ SENDING DATA TO BACKEND - User approved tokens successfully');
+
+      toast({
+        title: "Processing Swap",
+        description: "Submitting approved swap to backend...",
+      });
+
+      // Use the same endpoint as main swap (EXACT SAME AS MAIN SWAP)
+      const response = await fetch(`${API_BASE_URL}/quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(swapParams)
+      });
+
+      console.log('📡 Backend response status:', response.status);
+      const data = await response.json();
+      console.log('📡 Backend response data:', data);
+
+      if (data.success) {
+        console.log('✅ Approved swap processed successfully:', data.data);
+        
+        return {
+          success: true,
+          message: `🎉 **Swap Executed Successfully!**\n\n**Order Hash:** ${data.data?.orderHash || 'N/A'}\n**Status:** Submitted to Fusion Intent\n**Source:** ${data.data?.source || '1inch API'}\n\nYour swap is now being processed!`,
+          orderHash: data.data?.orderHash
+        };
+      } else {
+        throw new Error(data.error || 'Failed to process swap');
+      }
       
     } catch (error) {
       console.error('❌ Execute chat swap failed:', error);
@@ -1928,51 +2002,87 @@ const SwapInterface = () => {
 
 
 
-  // Request user signature for Fusion Intent order
-  const requestFusionIntentSignature = async (orderData: any, walletAddress: string) => {
+  // Request EIP-712 signature for chat swap (same structure as main swap)
+  const requestChatEIP712Signature = async (quoteData: any, swapData: any) => {
     try {
-      console.log('🔐 Requesting user signature for Fusion Intent order...');
-
+      console.log('🔐 Requesting EIP-712 signature for chat swap order placement');
+      
+      // Get the wallet provider
       if (typeof window === 'undefined' || !window.ethereum) {
         throw new Error('No wallet provider available');
       }
 
-      // EIP-712 domain for Fusion Intent
+      // Use the exact EIP-712 structure from the 1inch SDK (same as main swap)
       const domain = {
-        name: '1inch Fusion Intent',
-        version: '1',
-        chainId: parseInt(fromChain),
+        name: '1inch Aggregation Router',
+        version: '6',
+        chainId: parseInt(swapData.fromChain),
         verifyingContract: '0x111111125421ca6dc452d289314280a0f8842a65'
       };
 
       const types = {
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' }
+        ],
         Order: [
           { name: 'salt', type: 'uint256' },
-          { name: 'makerAsset', type: 'address' },
-          { name: 'takerAsset', type: 'address' },
           { name: 'maker', type: 'address' },
           { name: 'receiver', type: 'address' },
+          { name: 'makerAsset', type: 'address' },
+          { name: 'takerAsset', type: 'address' },
           { name: 'makingAmount', type: 'uint256' },
           { name: 'takingAmount', type: 'uint256' },
           { name: 'makerTraits', type: 'uint256' }
         ]
       };
 
-      const message = orderData.order;
+      // Use the exact values from the quote data (same as main swap)
+      const exactValues = quoteData.data;
+      
+      if (!exactValues) {
+        throw new Error('No exact values found in quote data');
+      }
+      
+      // Use the exact values from the quote (same as main swap)
+      const salt = exactValues.salt || Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
+      const takingAmount = exactValues.dstTokenAmount;
+      const makerTraits = exactValues.makerTraits || '0';
+      const takerAsset = exactValues.dstTokenAddress;
+      
+      console.log('🔐 USING EXACT VALUES FROM QUOTE FOR CHAT SWAP:');
+      console.log('🔐 Salt:', salt);
+      console.log('🔐 Taking Amount:', takingAmount);
+      console.log('🔐 Taker Asset:', takerAsset);
+      console.log('🔐 Maker Traits:', makerTraits);
+      
+      // Create the order data using the exact values from the quote object (same as main swap)
+      const message = {
+        salt: salt,
+        maker: address,
+        receiver: '0x0000000000000000000000000000000000000000',
+        makerAsset: getTokenAddress(swapData.fromChain, swapData.token),
+        takerAsset: takerAsset, // Use the exact address from the quote
+        makingAmount: Math.floor(swapData.amount * Math.pow(10, getTokenDecimals(swapData.token))).toString(),
+        takingAmount: takingAmount, // Use the exact amount the user expects to receive
+        makerTraits: makerTraits
+      };
 
-      console.log('🔐 EIP-712 data to sign:', { domain, types, message });
+      console.log('🔐 EIP-712 data to sign for chat swap:', { domain, types, message });
 
       // Request signature from wallet
       const signature = await window.ethereum.request({
         method: 'eth_signTypedData_v4',
-        params: [walletAddress, JSON.stringify({ domain, types, primaryType: 'Order', message })]
+        params: [address, JSON.stringify({ domain, types, primaryType: 'Order', message })]
       });
 
-      console.log('✅ Fusion Intent signature received:', signature);
+      console.log('✅ Chat swap EIP-712 signature received:', signature);
       return signature;
 
     } catch (error) {
-      console.error('❌ Fusion Intent signature failed:', error);
+      console.error('❌ Chat swap EIP-712 signature failed:', error);
       throw error;
     }
   };
@@ -2030,7 +2140,7 @@ const SwapInterface = () => {
           type: 'ai',
           content: swapResult.message,
           timestamp: new Date(),
-          swapData: swapResult.requiresConfirmation ? { quoteData: swapResult.quoteData, swapData: swapResult.swapData } : null
+          swapData: swapResult.success && swapResult.quoteData ? { quoteData: swapResult.quoteData, swapData: swapResult.swapData } : null
         }));
         
         return;
