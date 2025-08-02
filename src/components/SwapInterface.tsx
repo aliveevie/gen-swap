@@ -77,6 +77,15 @@ const SwapInterface = () => {
   const [swapCompleted, setSwapCompleted] = useState(false);
   const [currentQuote, setCurrentQuote] = useState<any>(null);
   
+  // Classic Swap State
+  const [swapMode, setSwapMode] = useState<'fusion' | 'classic'>('fusion');
+  const [classicSwapLoading, setClassicSwapLoading] = useState(false);
+  const [classicQuote, setClassicQuote] = useState<any>(null);
+  const [classicAnalysis, setClassicAnalysis] = useState<any>(null);
+  const [classicApprovalTx, setClassicApprovalTx] = useState<any>(null);
+  const [classicSwapTx, setClassicSwapTx] = useState<any>(null);
+  const [classicExecutionResult, setClassicExecutionResult] = useState<any>(null);
+  
   // AI Chat Interface State
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isChatMinimized, setIsChatMinimized] = useState(false);
@@ -1640,6 +1649,443 @@ const SwapInterface = () => {
     }
   };
 
+  // Classic Swap Functions
+
+  // Get classic swap quote
+  const getClassicSwapQuote = async () => {
+    if (!fromAmount || parseFloat(fromAmount) <= 0 || !fromToken || !toToken || !isConnected || !address) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid amount and connect wallet first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setClassicSwapLoading(true);
+    try {
+      // Get token addresses
+      const srcTokenAddress = getTokenAddress(fromChain, fromToken);
+      const dstTokenAddress = getTokenAddress(fromChain, toToken); // Classic swap is single-chain
+      
+      if (!srcTokenAddress || !dstTokenAddress) {
+        toast({
+          title: "Error",
+          description: "Token addresses not found for selected network",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Convert amount to wei
+      const tokenDecimals = {
+        'USDC': 6, 'USDT': 6, 'DAI': 18, 'WETH': 18, 'WBTC': 8,
+        'ETH': 18, 'MATIC': 18, 'BNB': 18, 'AVAX': 18, 'OP': 18, 'FTM': 18
+      };
+      const decimals = tokenDecimals[fromToken] || 18;
+      const weiAmount = Math.floor(parseFloat(fromAmount) * Math.pow(10, decimals)).toString();
+
+      // Validate wei amount is not 0
+      if (weiAmount === '0') {
+        toast({
+          title: "Error",
+          description: "Amount is too small to get a quote",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Prepare classic swap quote request
+      const quoteParams = {
+        src: srcTokenAddress,
+        dst: dstTokenAddress,
+        amount: weiAmount,
+        from: address,
+        slippage: '1', // 1% slippage
+        chainId: parseInt(fromChain)
+      };
+
+      console.log('🔄 Classic swap quote request:', quoteParams);
+
+      const response = await fetch(`${API_BASE_URL}/classic-swap/quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(quoteParams)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        console.log('✅ Classic swap quote received:', data.data);
+        setClassicQuote(data.data);
+        
+        // Calculate output amount
+        const toDecimals = tokenDecimals[toToken] || 18;
+        const outputAmount = data.data.toAmount ? (parseInt(data.data.toAmount) / Math.pow(10, toDecimals)).toString() : '0';
+        setToAmount(outputAmount);
+        
+        toast({
+          title: "Classic Swap Quote",
+          description: `Estimated output: ${outputAmount} ${toToken}`,
+        });
+      } else {
+        throw new Error(data.error || 'Failed to get classic swap quote');
+      }
+    } catch (error: any) {
+      console.error('❌ Classic swap quote failed:', error);
+      toast({
+        title: "Quote Failed",
+        description: error.message || "Failed to get classic swap quote. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setClassicSwapLoading(false);
+    }
+  };
+
+  // Get classic swap analysis
+  const getClassicSwapAnalysis = async () => {
+    if (!classicQuote) {
+      toast({
+        title: "Error",
+        description: "Please get a quote first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const srcTokenAddress = getTokenAddress(fromChain, fromToken);
+      const dstTokenAddress = getTokenAddress(fromChain, toToken);
+      
+      const analysisParams = {
+        src: srcTokenAddress,
+        dst: dstTokenAddress,
+        amount: classicQuote.fromTokenAmount || fromAmount,
+        from: address,
+        slippage: '1',
+        chainId: parseInt(fromChain)
+      };
+
+      console.log('🔍 Getting classic swap analysis:', analysisParams);
+
+      const response = await fetch(`${API_BASE_URL}/classic-swap/analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(analysisParams)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        console.log('✅ Classic swap analysis received:', data.data);
+        setClassicAnalysis(data.data);
+        
+        toast({
+          title: "Analysis Complete",
+          description: "Classic swap analysis ready",
+        });
+      } else {
+        throw new Error(data.error || 'Failed to get classic swap analysis');
+      }
+    } catch (error: any) {
+      console.error('❌ Classic swap analysis failed:', error);
+      toast({
+        title: "Analysis Failed",
+        description: error.message || "Failed to get classic swap analysis",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Get approval transaction for classic swap
+  const getClassicApprovalTransaction = async () => {
+    if (!classicQuote) {
+      toast({
+        title: "Error",
+        description: "Please get a quote first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const srcTokenAddress = getTokenAddress(fromChain, fromToken);
+      
+      const approvalParams = {
+        tokenAddress: srcTokenAddress,
+        amount: classicQuote.fromTokenAmount || fromAmount,
+        chainId: parseInt(fromChain)
+      };
+
+      console.log('✅ Getting classic approval transaction:', approvalParams);
+
+      const response = await fetch(`${API_BASE_URL}/classic-swap/approval`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(approvalParams)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        console.log('✅ Classic approval transaction received:', data.data);
+        setClassicApprovalTx(data.data);
+        
+        toast({
+          title: "Approval Ready",
+          description: "Approval transaction prepared for signing",
+        });
+      } else {
+        throw new Error(data.error || 'Failed to get approval transaction');
+      }
+    } catch (error: any) {
+      console.error('❌ Classic approval transaction failed:', error);
+      toast({
+        title: "Approval Failed",
+        description: error.message || "Failed to get approval transaction",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Get swap transaction for classic swap
+  const getClassicSwapTransaction = async () => {
+    if (!classicQuote) {
+      toast({
+        title: "Error",
+        description: "Please get a quote first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const srcTokenAddress = getTokenAddress(fromChain, fromToken);
+      const dstTokenAddress = getTokenAddress(fromChain, toToken);
+      
+      const swapParams = {
+        src: srcTokenAddress,
+        dst: dstTokenAddress,
+        amount: classicQuote.fromTokenAmount || fromAmount,
+        from: address,
+        slippage: '1',
+        chainId: parseInt(fromChain)
+      };
+
+      console.log('🔄 Getting classic swap transaction:', swapParams);
+
+      const response = await fetch(`${API_BASE_URL}/classic-swap/transaction`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(swapParams)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        console.log('✅ Classic swap transaction received:', data.data);
+        setClassicSwapTx(data.data);
+        
+        toast({
+          title: "Swap Ready",
+          description: "Swap transaction prepared for signing",
+        });
+      } else {
+        throw new Error(data.error || 'Failed to get swap transaction');
+      }
+    } catch (error: any) {
+      console.error('❌ Classic swap transaction failed:', error);
+      toast({
+        title: "Swap Failed",
+        description: error.message || "Failed to get swap transaction",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Execute classic swap with signed transaction
+  const executeClassicSwap = async (signedTx: string) => {
+    if (!classicSwapTx || !signedTx) {
+      toast({
+        title: "Error",
+        description: "Missing swap transaction or signature",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setClassicSwapLoading(true);
+    try {
+      const srcTokenAddress = getTokenAddress(fromChain, fromToken);
+      const dstTokenAddress = getTokenAddress(fromChain, toToken);
+      
+      const swapParams = {
+        src: srcTokenAddress,
+        dst: dstTokenAddress,
+        amount: classicQuote.fromTokenAmount || fromAmount,
+        from: address,
+        slippage: '1',
+        chainId: parseInt(fromChain)
+      };
+
+      const executionData = {
+        chainId: parseInt(fromChain),
+        signedTx: signedTx,
+        swapParams: swapParams,
+        userRpcUrl: getRpcUrl(fromChain) || undefined
+      };
+
+      console.log('🚀 Executing classic swap:', executionData);
+
+      const response = await fetch(`${API_BASE_URL}/classic-swap/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(executionData)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        console.log('✅ Classic swap executed successfully:', data.data);
+        setClassicExecutionResult(data.data);
+        
+        toast({
+          title: "🎉 Classic Swap Executed!",
+          description: `Transaction hash: ${data.data.transactionHash}`,
+        });
+
+        // Reset form
+        setFromAmount('');
+        setToAmount('');
+        setClassicQuote(null);
+        setClassicAnalysis(null);
+        setClassicApprovalTx(null);
+        setClassicSwapTx(null);
+      } else {
+        throw new Error(data.error || 'Failed to execute classic swap');
+      }
+    } catch (error: any) {
+      console.error('❌ Classic swap execution failed:', error);
+      toast({
+        title: "Execution Failed",
+        description: error.message || "Failed to execute classic swap",
+        variant: "destructive"
+      });
+    } finally {
+      setClassicSwapLoading(false);
+    }
+  };
+
+  // Handle classic swap approval
+  const handleClassicApproval = async () => {
+    if (!classicApprovalTx) {
+      toast({
+        title: "Error",
+        description: "No approval transaction available",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { writeContract } = useWriteContract();
+      
+      // Sign and send approval transaction
+      const result = await writeContract({
+        address: classicApprovalTx.to as `0x${string}`,
+        abi: [{
+          name: 'approve',
+          type: 'function',
+          inputs: [
+            { name: 'spender', type: 'address' },
+            { name: 'amount', type: 'uint256' }
+          ],
+          outputs: [{ name: '', type: 'bool' }],
+          stateMutability: 'nonpayable'
+        }],
+        functionName: 'approve',
+        args: [classicApprovalTx.data.slice(10, 50) as `0x${string}`, BigInt(classicApprovalTx.data.slice(50))],
+        account: address
+      });
+
+      console.log('✅ Classic approval transaction sent:', result);
+      
+      toast({
+        title: "Approval Sent",
+        description: "Approval transaction submitted successfully",
+      });
+
+      // Get swap transaction after approval
+      await getClassicSwapTransaction();
+      
+    } catch (error: any) {
+      console.error('❌ Classic approval failed:', error);
+      toast({
+        title: "Approval Failed",
+        description: error.message || "Failed to approve tokens",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Handle classic swap execution
+  const handleClassicSwap = async () => {
+    if (!classicSwapTx) {
+      toast({
+        title: "Error",
+        description: "No swap transaction available",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { writeContract } = useWriteContract();
+      
+      // Sign and send swap transaction
+      const result = await writeContract({
+        address: classicSwapTx.to as `0x${string}`,
+        abi: [{
+          name: 'swap',
+          type: 'function',
+          inputs: [],
+          outputs: [],
+          stateMutability: 'payable'
+        }],
+        functionName: 'swap',
+        args: [],
+        value: BigInt(classicSwapTx.value || '0'),
+        account: address
+      });
+
+      console.log('✅ Classic swap transaction sent:', result);
+      
+      // Execute the swap with the signed transaction
+      if (result) {
+        await executeClassicSwap(result);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Classic swap failed:', error);
+      toast({
+        title: "Swap Failed",
+        description: error.message || "Failed to execute swap",
+        variant: "destructive"
+      });
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
@@ -1860,10 +2306,9 @@ const SwapInterface = () => {
             "stateMutability": "nonpayable",
             "type": "function"
           }],
-          functionName: 'approve',
-          args: [approvalTx.data.slice(10, 50) as `0x${string}`, BigInt(approvalTx.data.slice(50))],
-          chain: getCurrentChain(),
-          account: address
+                  functionName: 'approve',
+        args: [approvalTx.data.slice(10, 50) as `0x${string}`, BigInt(approvalTx.data.slice(50))],
+        account: address
         });
         
         console.log('✅ Token approval submitted:', approvalResult);
@@ -2489,14 +2934,35 @@ const SwapInterface = () => {
                       </div>
                     ) : null}
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={getQuote}
-                    className="h-8 w-8 p-0 hover:bg-primary/20"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${quoteLoading ? 'animate-spin' : ''}`} />
-                  </Button>
+                  <div className="flex items-center space-x-2">
+                    {/* Swap Mode Selector */}
+                    <div className="flex items-center space-x-1 bg-muted/50 rounded-lg p-1">
+                      <Button
+                        variant={swapMode === 'fusion' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setSwapMode('fusion')}
+                        className="h-7 px-3 text-xs"
+                      >
+                        🔄 Fusion Intent
+                      </Button>
+                      <Button
+                        variant={swapMode === 'classic' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setSwapMode('classic')}
+                        className="h-7 px-3 text-xs"
+                      >
+                        ⚡ Classic Swap
+                      </Button>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={swapMode === 'fusion' ? getQuote : getClassicSwapQuote}
+                      className="h-8 w-8 p-0 hover:bg-primary/20"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${quoteLoading || classicSwapLoading ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -2666,18 +3132,38 @@ const SwapInterface = () => {
                       hasFromAmount: !!fromAmount,
                       hasToAmount: !!toAmount,
                       orderLoading,
+                      classicSwapLoading,
                       hasSufficientBalance: hasSufficientBalance(),
-                      sdkInitialized
+                      sdkInitialized,
+                      swapMode
                     });
-                    handleSwap();
+                    
+                    if (swapMode === 'fusion') {
+                      handleSwap();
+                    } else {
+                      // For classic swap, we need to get approval first
+                      if (classicQuote) {
+                        getClassicApprovalTransaction();
+                      } else {
+                        getClassicSwapQuote();
+                      }
+                    }
                   }}
-                  disabled={!isConnected || !fromAmount || !toAmount || orderLoading || !hasSufficientBalance() || !sdkInitialized}
+                  disabled={
+                    !isConnected || 
+                    !fromAmount || 
+                    !toAmount || 
+                    orderLoading || 
+                    classicSwapLoading || 
+                    !hasSufficientBalance() || 
+                    (swapMode === 'fusion' && !sdkInitialized)
+                  }
                   className="w-full h-14 text-lg bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-glow disabled:opacity-50 disabled:shadow-none"
                 >
-                  {orderLoading ? (
+                  {orderLoading || classicSwapLoading ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Creating Order...
+                      {swapMode === 'fusion' ? 'Creating Order...' : 'Processing...'}
                     </>
                   ) : !isConnected ? (
                     "Connect Wallet to Swap"
@@ -2690,13 +3176,15 @@ const SwapInterface = () => {
                       <AlertTriangle className="mr-2 h-5 w-5" />
                       Insufficient Balance
                     </>
-                  ) : !sdkInitialized ? (
+                  ) : swapMode === 'fusion' && !sdkInitialized ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                       Connecting SDK...
                     </>
+                  ) : classicQuote ? (
+                    `Execute ${swapMode === 'fusion' ? 'Fusion Intent' : 'Classic'} Swap: ${fromAmount} ${fromToken} → ${toAmount} ${toToken}`
                   ) : (
-                    `Get Quote & Review: ${fromAmount} ${fromToken} → ${toAmount} ${toToken}`
+                    `Get ${swapMode === 'fusion' ? 'Fusion Intent' : 'Classic'} Quote: ${fromAmount} ${fromToken} → ${toAmount} ${toToken}`
                   )}
                 </Button>
 
@@ -2757,6 +3245,140 @@ const SwapInterface = () => {
                 >
                   🧪 Test Fusion Intent
                 </Button>
+
+                {/* Classic Swap Status Section */}
+                {swapMode === 'classic' && (
+                  <div className="mt-4 space-y-3">
+                    {/* Classic Quote Status */}
+                    {classicQuote && (
+                      <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-green-800">⚡ Classic Swap Quote Ready</h4>
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        </div>
+                        <p className="text-sm text-green-700 mb-3">
+                          Quote received for {fromAmount} {fromToken} → {toAmount} {toToken}
+                        </p>
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={getClassicSwapAnalysis}
+                            className="text-xs"
+                          >
+                            📊 Get Analysis
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={getClassicApprovalTransaction}
+                            className="text-xs"
+                          >
+                            ✅ Get Approval
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Classic Analysis Status */}
+                    {classicAnalysis && (
+                      <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-blue-800">🔍 Classic Swap Analysis</h4>
+                          <Shield className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div className="text-sm text-blue-700 space-y-1">
+                          <p>Needs Approval: {classicAnalysis.needsApproval ? 'Yes' : 'No'}</p>
+                          <p>Estimated Gas: {classicAnalysis.estimatedGas?.total || 'N/A'}</p>
+                          <p>Estimated Cost: {classicAnalysis.estimatedCost?.total || 'N/A'} wei</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Classic Approval Status */}
+                    {classicApprovalTx && (
+                      <div className="p-4 rounded-lg bg-yellow-50 border border-yellow-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-yellow-800">🔐 Approval Transaction Ready</h4>
+                          <Lock className="h-4 w-4 text-yellow-600" />
+                        </div>
+                        <p className="text-sm text-yellow-700 mb-3">
+                          Approval transaction prepared. Sign in your wallet to continue.
+                        </p>
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            onClick={handleClassicApproval}
+                            className="text-xs bg-yellow-600 hover:bg-yellow-700"
+                          >
+                            🔐 Approve Tokens
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setClassicApprovalTx(null)}
+                            className="text-xs"
+                          >
+                            ❌ Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Classic Swap Transaction Status */}
+                    {classicSwapTx && (
+                      <div className="p-4 rounded-lg bg-purple-50 border border-purple-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-purple-800">🔄 Swap Transaction Ready</h4>
+                          <ArrowUpDown className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <p className="text-sm text-purple-700 mb-3">
+                          Swap transaction prepared. Sign in your wallet to execute.
+                        </p>
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            onClick={handleClassicSwap}
+                            className="text-xs bg-purple-600 hover:bg-purple-700"
+                          >
+                            🚀 Execute Swap
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setClassicSwapTx(null)}
+                            className="text-xs"
+                          >
+                            ❌ Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Classic Execution Result */}
+                    {classicExecutionResult && (
+                      <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-green-800">🎉 Classic Swap Executed!</h4>
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        </div>
+                        <div className="text-sm text-green-700 space-y-1">
+                          <p>Transaction Hash: {classicExecutionResult.transactionHash}</p>
+                          <p>Block Number: {classicExecutionResult.blockNumber}</p>
+                          <p>Gas Used: {classicExecutionResult.gasUsed}</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setClassicExecutionResult(null)}
+                          className="text-xs mt-2"
+                        >
+                          ✅ Done
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

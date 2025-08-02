@@ -900,27 +900,284 @@ Make it actionable for users.`;
   }
 
   /**
-   * Optimize swap parameters with AI
+   * Get classic swap quote with AI analysis
+   * @param {Object} swapParams - Swap parameters
+   * @returns {Promise<Object>} Quote with AI analysis
+   */
+  async getClassicSwapQuoteWithAnalysis(swapParams) {
+    try {
+      console.log(`🤖 Getting classic swap quote with AI analysis...`);
+
+      // Import the tools module to get quote data
+      const { getClassicSwapQuote } = require('./tools.js');
+      
+      const quoteResult = await getClassicSwapQuote(swapParams);
+      
+      if (!quoteResult.success) {
+        throw new Error(`Failed to get classic swap quote: ${quoteResult.error}`);
+      }
+
+      const quoteData = quoteResult.data;
+      const prompt = `Analyze this classic swap quote and provide insights:
+
+Swap Parameters:
+${JSON.stringify(swapParams, null, 2)}
+
+Quote Data:
+${JSON.stringify(quoteData, null, 2)}
+
+Please provide:
+1. Quote efficiency analysis
+2. Price impact assessment
+3. Slippage optimization recommendations
+4. Gas cost analysis
+5. Execution timing suggestions
+6. Risk factors and mitigation
+7. Alternative route comparisons
+8. Best practices for classic swaps
+
+Make it actionable for users.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { quoteData, swapParams });
+      
+      return {
+        success: true,
+        quoteData: quoteData,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Classic swap quote analysis failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get classic swap quote with analysis',
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get comprehensive classic swap analysis with AI insights
+   * @param {Object} swapParams - Swap parameters
+   * @returns {Promise<Object>} Comprehensive analysis with AI insights
+   */
+  async getClassicSwapAnalysisWithAI(swapParams) {
+    try {
+      console.log(`🤖 Getting comprehensive classic swap analysis with AI...`);
+
+      // Import the tools module to get analysis data
+      const { getClassicSwapAnalysis } = require('./tools.js');
+      
+      const analysisResult = await getClassicSwapAnalysis(swapParams);
+      
+      if (!analysisResult.success) {
+        throw new Error(`Failed to get classic swap analysis: ${analysisResult.error}`);
+      }
+
+      const analysisData = analysisResult.analysis;
+      const prompt = `Analyze this comprehensive classic swap data and provide professional insights:
+
+Swap Parameters:
+${JSON.stringify(swapParams, null, 2)}
+
+Analysis Data:
+${JSON.stringify(analysisData, null, 2)}
+
+Please provide a professional analysis with the following structure:
+
+## Swap Overview
+- Token pair analysis and market context
+- Amount and slippage assessment
+- Network-specific considerations
+
+## Quote Analysis
+- Price impact and efficiency
+- Expected output amount
+- Quote validity and timing
+
+## Approval Requirements
+- Current allowance status
+- Approval transaction details
+- Gas cost for approval
+
+## Gas and Cost Analysis
+- Estimated gas usage breakdown
+- Total cost calculation
+- Cost optimization opportunities
+
+## Risk Assessment
+- Slippage risks
+- Network congestion considerations
+- Token-specific risks
+- Market volatility impact
+
+## Execution Strategy
+- Optimal execution timing
+- Gas price recommendations
+- Transaction ordering (approval vs swap)
+- Alternative route suggestions
+
+## Best Practices
+- Security considerations
+- Transaction monitoring
+- Error handling recommendations
+- Post-swap actions
+
+Make the response professional, data-driven, and actionable. Use proper formatting with markdown.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { analysisData, swapParams });
+      
+      return {
+        success: true,
+        analysisData: analysisData,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Classic swap analysis with AI failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get classic swap analysis with AI',
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Compare Fusion Intent vs Classic Swap with AI analysis
+   * @param {Object} fusionParams - Fusion Intent parameters
+   * @param {Object} classicParams - Classic swap parameters
+   * @returns {Promise<Object>} Comparison analysis
+   */
+  async compareSwapMethods(fusionParams, classicParams) {
+    try {
+      console.log(`🤖 Comparing Fusion Intent vs Classic Swap methods...`);
+
+      // Import the tools module to get both quote types
+      const { getFusionIntentQuote, getClassicSwapQuote } = require('./tools.js');
+      
+      const [fusionResult, classicResult] = await Promise.all([
+        getFusionIntentQuote(fusionParams),
+        getClassicSwapQuote(classicParams)
+      ]);
+
+      const comparisonData = {
+        fusion: fusionResult.success ? fusionResult.data : null,
+        classic: classicResult.success ? classicResult.data : null,
+        fusionParams,
+        classicParams
+      };
+
+      const prompt = `Compare these two swap methods and provide comprehensive analysis:
+
+Fusion Intent Parameters:
+${JSON.stringify(fusionParams, null, 2)}
+
+Classic Swap Parameters:
+${JSON.stringify(classicParams, null, 2)}
+
+Fusion Intent Quote:
+${JSON.stringify(fusionResult.success ? fusionResult.data : 'Failed', null, 2)}
+
+Classic Swap Quote:
+${JSON.stringify(classicResult.success ? classicResult.data : 'Failed', null, 2)}
+
+Please provide a detailed comparison with the following structure:
+
+## Method Overview
+- Fusion Intent: Cross-chain, intent-based execution
+- Classic Swap: Single-chain, immediate execution
+
+## Quote Comparison
+- Price efficiency comparison
+- Output amount differences
+- Quote validity periods
+
+## Cost Analysis
+- Gas cost differences
+- Protocol fees comparison
+- Total cost breakdown
+
+## Execution Comparison
+- Speed and timing differences
+- Success rate considerations
+- User experience comparison
+
+## Risk Assessment
+- Slippage risks for each method
+- MEV protection differences
+- Network-specific risks
+
+## Use Case Recommendations
+- When to use Fusion Intent
+- When to use Classic Swap
+- Hybrid approach suggestions
+
+## Technical Differences
+- Transaction structure differences
+- Signature requirements
+- Smart contract interactions
+
+Make the comparison objective, data-driven, and actionable. Use proper formatting with markdown.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { comparisonData });
+      
+      return {
+        success: true,
+        comparisonData: comparisonData,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        fusionParams,
+        classicParams,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Swap method comparison failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to compare swap methods',
+        fusionParams,
+        classicParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Optimize classic swap parameters with AI
    * @param {Object} swapRequest - Swap request parameters
    * @returns {Promise<Object>} Optimized parameters
    */
-  async optimizeSwapParameters(swapRequest) {
+  async optimizeClassicSwapParameters(swapRequest) {
     try {
-      const prompt = `Optimize these swap parameters for best execution:
+      const prompt = `Optimize these classic swap parameters for best execution:
 
 Swap Request:
-- From: ${swapRequest.fromToken} on ${swapRequest.fromNetwork}
-- To: ${swapRequest.toToken} on ${swapRequest.toNetwork}
+- From: ${swapRequest.src} on chain ${swapRequest.chainId}
+- To: ${swapRequest.dst} on chain ${swapRequest.chainId}
 - Amount: ${swapRequest.amount}
 - Current Slippage: ${swapRequest.slippage || 'Not set'}
-- Gas Priority: ${swapRequest.gasPriority || 'Not set'}
+- Wallet: ${swapRequest.from}
 
 Provide recommendations for:
 1. Optimal slippage tolerance
 2. Gas fee optimization
-3. Network selection
-4. Timing considerations
-5. Risk management`;
+3. Transaction timing
+4. Amount optimization
+5. Risk management strategies
+6. Alternative token pairs
+7. Network selection considerations
+
+Make recommendations specific to classic swaps and 1inch API.`;
 
       const result = await this.generateAIResponse(prompt, { swapRequest });
       
@@ -932,11 +1189,11 @@ Provide recommendations for:
       };
 
     } catch (error) {
-      console.error('❌ Swap optimization failed:', error.message);
+      console.error('❌ Classic swap optimization failed:', error.message);
       
       return {
         success: false,
-        error: error.message || 'Failed to optimize swap parameters',
+        error: error.message || 'Failed to optimize classic swap parameters',
         timestamp: new Date().toISOString()
       };
     }
@@ -961,5 +1218,9 @@ module.exports = {
   getTokenListAnalysis: (chainId) => aiTools.getTokenListAnalysis(chainId),
   analyzeFusionIntentOrder: (orderData) => aiTools.analyzeFusionIntentOrder(orderData),
   getFusionIntentQuoteWithAnalysis: (quoteParams) => aiTools.getFusionIntentQuoteWithAnalysis(quoteParams),
+  getClassicSwapQuoteWithAnalysis: (swapParams) => aiTools.getClassicSwapQuoteWithAnalysis(swapParams),
+  getClassicSwapAnalysisWithAI: (swapParams) => aiTools.getClassicSwapAnalysisWithAI(swapParams),
+  compareSwapMethods: (fusionParams, classicParams) => aiTools.compareSwapMethods(fusionParams, classicParams),
+  optimizeClassicSwapParameters: (swapRequest) => aiTools.optimizeClassicSwapParameters(swapRequest),
   validateConfiguration: () => aiTools.validateConfiguration()
 }; 

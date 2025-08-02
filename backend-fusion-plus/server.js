@@ -1986,6 +1986,433 @@ app.post('/api/complete-swap', async (req, res) => {
   }
 });
 
+// Classic Swap API Endpoints
+
+// Get classic swap quote
+app.post('/api/classic-swap/quote', async (req, res) => {
+  try {
+    const { src, dst, amount, from, slippage, chainId } = req.body;
+
+    console.log('🔄 Classic swap quote request:', { src, dst, amount, from, slippage, chainId });
+
+    if (!src || !dst || !amount || !from || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: src, dst, amount, from, chainId'
+      });
+    }
+
+    const swapParams = { src, dst, amount, from, slippage: slippage || '1', chainId };
+    const result = await deFiTools.getClassicSwapQuote(swapParams);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result.data,
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        swapParams: swapParams
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Classic swap quote error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get classic swap quote'
+    });
+  }
+});
+
+// Get token allowance for classic swap
+app.post('/api/classic-swap/allowance', async (req, res) => {
+  try {
+    const { tokenAddress, walletAddress, chainId } = req.body;
+
+    console.log('🔐 Classic swap allowance request:', { tokenAddress, walletAddress, chainId });
+
+    if (!tokenAddress || !walletAddress || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: tokenAddress, walletAddress, chainId'
+      });
+    }
+
+    const allowanceParams = { tokenAddress, walletAddress, chainId };
+    const result = await deFiTools.getTokenAllowance(allowanceParams);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result.data,
+        allowanceParams: allowanceParams,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        allowanceParams: allowanceParams
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Classic swap allowance error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get token allowance'
+    });
+  }
+});
+
+// Get approval transaction for classic swap
+app.post('/api/classic-swap/approval', async (req, res) => {
+  try {
+    const { tokenAddress, amount, chainId } = req.body;
+
+    console.log('✅ Classic swap approval request:', { tokenAddress, amount, chainId });
+
+    if (!tokenAddress || !amount || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: tokenAddress, amount, chainId'
+      });
+    }
+
+    const approvalParams = { tokenAddress, amount, chainId };
+    const result = await deFiTools.getApprovalTransaction(approvalParams);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result.data,
+        approvalParams: approvalParams,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        approvalParams: approvalParams
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Classic swap approval error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get approval transaction'
+    });
+  }
+});
+
+// Get swap transaction for classic swap
+app.post('/api/classic-swap/transaction', async (req, res) => {
+  try {
+    const { src, dst, amount, from, slippage, chainId } = req.body;
+
+    console.log('🔄 Classic swap transaction request:', { src, dst, amount, from, slippage, chainId });
+
+    if (!src || !dst || !amount || !from || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: src, dst, amount, from, chainId'
+      });
+    }
+
+    const swapParams = { src, dst, amount, from, slippage: slippage || '1', chainId };
+    const result = await deFiTools.getSwapTransaction(swapParams);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result.data,
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        swapParams: swapParams
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Classic swap transaction error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get swap transaction'
+    });
+  }
+});
+
+// Execute classic swap with signed transaction
+app.post('/api/classic-swap/execute', async (req, res) => {
+  try {
+    const { chainId, signedTx, swapParams, userRpcUrl } = req.body;
+
+    console.log('🚀 Classic swap execution request:', { chainId, signedTx: signedTx ? 'Present' : 'Missing', userRpcUrl });
+
+    if (!chainId || !signedTx || !swapParams) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: chainId, signedTx, swapParams'
+      });
+    }
+
+    const swapData = { chainId, signedTx, swapParams, userRpcUrl };
+    const result = await deFiTools.executeClassicSwap(swapData);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result,
+        swapData: swapData,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        swapData: swapData
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Classic swap execution error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to execute classic swap'
+    });
+  }
+});
+
+// Get comprehensive classic swap analysis
+app.post('/api/classic-swap/analysis', async (req, res) => {
+  try {
+    const { src, dst, amount, from, slippage, chainId } = req.body;
+
+    console.log('🔍 Classic swap analysis request:', { src, dst, amount, from, slippage, chainId });
+
+    if (!src || !dst || !amount || !from || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: src, dst, amount, from, chainId'
+      });
+    }
+
+    const swapParams = { src, dst, amount, from, slippage: slippage || '1', chainId };
+    const result = await deFiTools.getClassicSwapAnalysis(swapParams);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result.analysis,
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        swapParams: swapParams
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Classic swap analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get classic swap analysis'
+    });
+  }
+});
+
+// AI-powered classic swap quote analysis
+app.post('/api/classic-swap/ai-quote', async (req, res) => {
+  try {
+    const { src, dst, amount, from, slippage, chainId } = req.body;
+
+    console.log('🤖 AI classic swap quote analysis request:', { src, dst, amount, from, slippage, chainId });
+
+    if (!src || !dst || !amount || !from || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: src, dst, amount, from, chainId'
+      });
+    }
+
+    const swapParams = { src, dst, amount, from, slippage: slippage || '1', chainId };
+    const result = await aiTools.getClassicSwapQuoteWithAnalysis(swapParams);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: {
+          quote: result.quoteData,
+          aiAnalysis: result.aiAnalysis
+        },
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        swapParams: swapParams
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ AI classic swap quote analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get AI classic swap quote analysis'
+    });
+  }
+});
+
+// AI-powered comprehensive classic swap analysis
+app.post('/api/classic-swap/ai-analysis', async (req, res) => {
+  try {
+    const { src, dst, amount, from, slippage, chainId } = req.body;
+
+    console.log('🤖 AI comprehensive classic swap analysis request:', { src, dst, amount, from, slippage, chainId });
+
+    if (!src || !dst || !amount || !from || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: src, dst, amount, from, chainId'
+      });
+    }
+
+    const swapParams = { src, dst, amount, from, slippage: slippage || '1', chainId };
+    const result = await aiTools.getClassicSwapAnalysisWithAI(swapParams);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: {
+          analysis: result.analysisData,
+          aiAnalysis: result.aiAnalysis
+        },
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        swapParams: swapParams
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ AI comprehensive classic swap analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get AI comprehensive classic swap analysis'
+    });
+  }
+});
+
+// Compare Fusion Intent vs Classic Swap methods
+app.post('/api/swap/compare', async (req, res) => {
+  try {
+    const { fusionParams, classicParams } = req.body;
+
+    console.log('🔄 Swap method comparison request:', { 
+      fusionParams: fusionParams ? 'Present' : 'Missing', 
+      classicParams: classicParams ? 'Present' : 'Missing' 
+    });
+
+    if (!fusionParams || !classicParams) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: fusionParams, classicParams'
+      });
+    }
+
+    const result = await aiTools.compareSwapMethods(fusionParams, classicParams);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: {
+          comparison: result.comparisonData,
+          aiAnalysis: result.aiAnalysis
+        },
+        fusionParams,
+        classicParams,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        fusionParams,
+        classicParams
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Swap method comparison error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to compare swap methods'
+    });
+  }
+});
+
+// Optimize classic swap parameters with AI
+app.post('/api/classic-swap/optimize', async (req, res) => {
+  try {
+    const { src, dst, amount, from, slippage, chainId } = req.body;
+
+    console.log('⚡ Classic swap optimization request:', { src, dst, amount, from, slippage, chainId });
+
+    if (!src || !dst || !amount || !from || !chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: src, dst, amount, from, chainId'
+      });
+    }
+
+    const swapRequest = { src, dst, amount, from, slippage: slippage || '1', chainId };
+    const result = await aiTools.optimizeClassicSwapParameters(swapRequest);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: {
+          recommendations: result.recommendations,
+          originalRequest: result.originalRequest
+        },
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        swapRequest
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Classic swap optimization error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to optimize classic swap parameters'
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -2014,6 +2441,16 @@ app.listen(PORT, () => {
   console.log(`📚 AI Educational Content: http://localhost:${PORT}/api/ai/educational-content`);
   console.log(`⚡ AI Swap Optimization: http://localhost:${PORT}/api/ai/optimize-swap`);
   console.log(`🔍 AI Tools Status: http://localhost:${PORT}/api/ai/status`);
+  console.log(`🔄 Classic Swap Quote: http://localhost:${PORT}/api/classic-swap/quote`);
+  console.log(`🔐 Classic Swap Allowance: http://localhost:${PORT}/api/classic-swap/allowance`);
+  console.log(`✅ Classic Swap Approval: http://localhost:${PORT}/api/classic-swap/approval`);
+  console.log(`🔄 Classic Swap Transaction: http://localhost:${PORT}/api/classic-swap/transaction`);
+  console.log(`🚀 Classic Swap Execute: http://localhost:${PORT}/api/classic-swap/execute`);
+  console.log(`🔍 Classic Swap Analysis: http://localhost:${PORT}/api/classic-swap/analysis`);
+  console.log(`🤖 AI Classic Swap Quote: http://localhost:${PORT}/api/classic-swap/ai-quote`);
+  console.log(`🤖 AI Classic Swap Analysis: http://localhost:${PORT}/api/classic-swap/ai-analysis`);
+  console.log(`⚡ Classic Swap Optimize: http://localhost:${PORT}/api/classic-swap/optimize`);
+  console.log(`🔄 Swap Method Compare: http://localhost:${PORT}/api/swap/compare`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
   console.log(`🔧 TRUE DeFi Status: ${process.env.DEV_PORTAL_KEY ? '✅ Ready for swaps' : '⚠️  DEV_PORTAL_KEY required'}`);
   console.log(`👤 User Role: Sign ALL transactions in their own wallet`);

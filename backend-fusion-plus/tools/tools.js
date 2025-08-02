@@ -490,9 +490,9 @@ class DeFiTools {
   }
 
   /**
-   * Get multiple token prices in batch
+   * Get comprehensive price analysis for multiple tokens
    * @param {Array} tokens - Array of {chainId, tokenAddress, currency} objects
-   * @returns {Promise<Object>} Batch price data
+   * @returns {Promise<Object>} Comprehensive price data
    */
   async getBatchTokenPrices(tokens) {
     try {
@@ -564,6 +564,369 @@ class DeFiTools {
         success: false,
         error: error.message || 'Failed to get batch token prices',
         tokens: tokens,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get classic swap quote from 1inch API (v6.1)
+   * @param {Object} swapParams - Swap parameters
+   * @returns {Promise<Object>} Swap quote
+   */
+  async getClassicSwapQuote(swapParams) {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      const { src, dst, amount, from, slippage, chainId } = swapParams;
+
+      console.log(`🔄 Getting classic swap quote for ${src} -> ${dst} on chain ${chainId}...`);
+
+      const url = `https://api.1inch.dev/swap/v6.1/${chainId}/quote`;
+
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${this.devPortalKey}`,
+          'Accept': 'application/json'
+        },
+        params: {
+          src,
+          dst,
+          amount,
+          from,
+          slippage: slippage || '1',
+          disableEstimate: 'false',
+          allowPartialFill: 'false'
+        },
+        timeout: 15000
+      };
+
+      console.log('📋 Classic swap quote request:', {
+        url,
+        params: config.params,
+        headers: { Authorization: 'Bearer ***' }
+      });
+
+      const response = await axios.get(url, config);
+      console.log(`✅ Classic swap quote retrieved:`, response.data);
+
+      return {
+        success: true,
+        data: response.data,
+        swapParams: swapParams,
+        timestamp: new Date().toISOString(),
+        source: '1inch_classic_swap_api_v6.1'
+      };
+
+    } catch (error) {
+      console.error(`❌ Classic swap quote failed:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get classic swap quote',
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get token allowance for classic swap
+   * @param {Object} allowanceParams - Allowance parameters
+   * @returns {Promise<Object>} Token allowance
+   */
+  async getTokenAllowance(allowanceParams) {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      const { tokenAddress, walletAddress, chainId } = allowanceParams;
+
+      console.log(`🔐 Getting token allowance for ${tokenAddress} on chain ${chainId}...`);
+
+      const url = `https://api.1inch.dev/swap/v6.1/${chainId}/approve/allowance`;
+
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${this.devPortalKey}`,
+          'Accept': 'application/json'
+        },
+        params: {
+          tokenAddress,
+          walletAddress
+        },
+        timeout: 10000
+      };
+
+      const response = await axios.get(url, config);
+      console.log(`✅ Token allowance retrieved:`, response.data);
+
+      return {
+        success: true,
+        data: response.data,
+        allowanceParams: allowanceParams,
+        timestamp: new Date().toISOString(),
+        source: '1inch_classic_swap_api_v6.1'
+      };
+
+    } catch (error) {
+      console.error(`❌ Token allowance retrieval failed:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get token allowance',
+        allowanceParams: allowanceParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get approval transaction for classic swap
+   * @param {Object} approvalParams - Approval parameters
+   * @returns {Promise<Object>} Approval transaction
+   */
+  async getApprovalTransaction(approvalParams) {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      const { tokenAddress, amount, chainId } = approvalParams;
+
+      console.log(`✅ Getting approval transaction for ${tokenAddress} on chain ${chainId}...`);
+
+      const url = `https://api.1inch.dev/swap/v6.1/${chainId}/approve/transaction`;
+
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${this.devPortalKey}`,
+          'Accept': 'application/json'
+        },
+        params: {
+          tokenAddress,
+          amount
+        },
+        timeout: 10000
+      };
+
+      const response = await axios.get(url, config);
+      console.log(`✅ Approval transaction retrieved:`, response.data);
+
+      return {
+        success: true,
+        data: response.data,
+        approvalParams: approvalParams,
+        timestamp: new Date().toISOString(),
+        source: '1inch_classic_swap_api_v6.1'
+      };
+
+    } catch (error) {
+      console.error(`❌ Approval transaction retrieval failed:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get approval transaction',
+        approvalParams: approvalParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get swap transaction for classic swap
+   * @param {Object} swapParams - Swap parameters
+   * @returns {Promise<Object>} Swap transaction
+   */
+  async getSwapTransaction(swapParams) {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      const { src, dst, amount, from, slippage, chainId } = swapParams;
+
+      console.log(`🔄 Getting swap transaction for ${src} -> ${dst} on chain ${chainId}...`);
+
+      const url = `https://api.1inch.dev/swap/v6.1/${chainId}/swap`;
+
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${this.devPortalKey}`,
+          'Accept': 'application/json'
+        },
+        params: {
+          src,
+          dst,
+          amount,
+          from,
+          slippage: slippage || '1',
+          disableEstimate: 'false',
+          allowPartialFill: 'false'
+        },
+        timeout: 15000
+      };
+
+      const response = await axios.get(url, config);
+      console.log(`✅ Swap transaction retrieved:`, response.data);
+
+      return {
+        success: true,
+        data: response.data,
+        swapParams: swapParams,
+        timestamp: new Date().toISOString(),
+        source: '1inch_classic_swap_api_v6.1'
+      };
+
+    } catch (error) {
+      console.error(`❌ Swap transaction retrieval failed:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get swap transaction',
+        swapParams: swapParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Execute classic swap with signed transaction
+   * @param {Object} swapData - Complete swap data with signed transaction
+   * @returns {Promise<Object>} Swap execution result
+   */
+  async executeClassicSwap(swapData) {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      const { chainId, signedTx, swapParams, userRpcUrl } = swapData;
+
+      console.log(`🚀 Executing classic swap on chain ${chainId}...`);
+
+      if (!signedTx) {
+        throw new Error('Signed transaction is required for swap execution');
+      }
+
+      // Use user's RPC URL if provided, otherwise use default
+      const rpcUrl = userRpcUrl || process.env.RPC_URL;
+      if (!rpcUrl) {
+        throw new Error('RPC URL is required for transaction execution');
+      }
+
+      // Create Web3 instance with user's RPC
+      const { Web3 } = require('web3');
+      const web3 = new Web3(rpcUrl);
+
+      // Send the signed transaction
+      console.log('📡 Sending signed transaction...');
+      const receipt = await web3.eth.sendSignedTransaction(signedTx);
+      
+      console.log(`✅ Classic swap executed successfully!`);
+      console.log(`📋 Transaction hash: ${receipt.transactionHash}`);
+      console.log(`📋 Block number: ${receipt.blockNumber}`);
+
+      return {
+        success: true,
+        transactionHash: receipt.transactionHash,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed,
+        effectiveGasPrice: receipt.effectiveGasPrice,
+        swapParams: swapParams,
+        chainId: chainId,
+        timestamp: new Date().toISOString(),
+        source: '1inch_classic_swap_execution'
+      };
+
+    } catch (error) {
+      console.error(`❌ Classic swap execution failed:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to execute classic swap',
+        swapData: swapData,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get comprehensive classic swap analysis
+   * @param {Object} swapParams - Swap parameters
+   * @returns {Promise<Object>} Comprehensive swap analysis
+   */
+  async getClassicSwapAnalysis(swapParams) {
+    try {
+      console.log(`🔍 Getting comprehensive classic swap analysis...`);
+
+      const { src, dst, amount, from, slippage, chainId } = swapParams;
+
+      // Get quote, allowance, and gas price in parallel
+      const [quoteResult, allowanceResult, gasResult] = await Promise.all([
+        this.getClassicSwapQuote(swapParams),
+        this.getTokenAllowance({ tokenAddress: src, walletAddress: from, chainId }),
+        this.getGasPrice(chainId)
+      ]);
+
+      const analysis = {
+        swapParams: swapParams,
+        quote: quoteResult.success ? quoteResult.data : null,
+        allowance: allowanceResult.success ? allowanceResult.data : null,
+        gasPrice: gasResult.success ? gasResult.data : null,
+        needsApproval: false,
+        estimatedGas: null,
+        estimatedCost: null,
+        timestamp: new Date().toISOString()
+      };
+
+      // Check if approval is needed
+      if (allowanceResult.success && quoteResult.success) {
+        const currentAllowance = BigInt(allowanceResult.data.allowance);
+        const requiredAmount = BigInt(amount);
+        analysis.needsApproval = currentAllowance < requiredAmount;
+      }
+
+      // Calculate estimated gas and cost
+      if (gasResult.success && quoteResult.success) {
+        const gasData = gasResult.data;
+        const standardGasPrice = gasData.standard || gasData.fast;
+        
+        // Estimate gas (approximate values)
+        const estimatedGasForSwap = 200000; // Approximate gas for swap
+        const estimatedGasForApproval = 50000; // Approximate gas for approval
+        
+        analysis.estimatedGas = {
+          swap: estimatedGasForSwap,
+          approval: analysis.needsApproval ? estimatedGasForApproval : 0,
+          total: analysis.needsApproval ? estimatedGasForSwap + estimatedGasForApproval : estimatedGasForSwap
+        };
+
+        analysis.estimatedCost = {
+          swap: (BigInt(estimatedGasForSwap) * BigInt(standardGasPrice)).toString(),
+          approval: analysis.needsApproval ? (BigInt(estimatedGasForApproval) * BigInt(standardGasPrice)).toString() : '0',
+          total: (BigInt(analysis.estimatedGas.total) * BigInt(standardGasPrice)).toString()
+        };
+      }
+
+      console.log(`✅ Classic swap analysis completed`);
+
+      return {
+        success: true,
+        analysis: analysis,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error(`❌ Classic swap analysis failed:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get classic swap analysis',
+        swapParams: swapParams,
         timestamp: new Date().toISOString()
       };
     }
@@ -789,5 +1152,11 @@ module.exports = {
   getNetworkStats: (chainId) => deFiTools.getNetworkStats(chainId),
   submitFusionIntentOrder: (chainId, orderData) => deFiTools.submitFusionIntentOrder(chainId, orderData),
   getFusionIntentQuote: (quoteParams) => deFiTools.getFusionIntentQuote(quoteParams),
+  getClassicSwapQuote: (swapParams) => deFiTools.getClassicSwapQuote(swapParams),
+  getTokenAllowance: (allowanceParams) => deFiTools.getTokenAllowance(allowanceParams),
+  getApprovalTransaction: (approvalParams) => deFiTools.getApprovalTransaction(approvalParams),
+  getSwapTransaction: (swapParams) => deFiTools.getSwapTransaction(swapParams),
+  executeClassicSwap: (swapData) => deFiTools.executeClassicSwap(swapData),
+  getClassicSwapAnalysis: (swapParams) => deFiTools.getClassicSwapAnalysis(swapParams),
   validateConfiguration: () => deFiTools.validateConfiguration()
 }; 
