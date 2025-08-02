@@ -95,7 +95,7 @@ export const SwapModals: React.FC<SwapModalsProps> = ({
                             Processing
                           </>
                         ) : (
-                          'Pending Approval'
+                          'Processing...'
                         )}
                       </Badge>
                     </div>

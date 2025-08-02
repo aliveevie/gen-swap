@@ -93,6 +93,9 @@ export const useFusionSwap = ({
   };
 
   const approveTokens = async () => {
+    // Set loading state immediately to make button inactive
+    updateState({ approvalLoading: true, isProcessing: true });
+    
     console.log('🚀 APPROVE TOKENS FUNCTION CALLED');
     console.log('📋 Current state:', {
       hasOrderData: !!state.orderData,
@@ -110,8 +113,6 @@ export const useFusionSwap = ({
     if (!isConnected || !address) {
       throw new Error('Wallet not connected');
     }
-
-    updateState({ approvalLoading: true, isProcessing: true });
 
     try {
       const tokenAddress = getTokenAddress(fromChain, fromToken);

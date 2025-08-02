@@ -3505,7 +3505,7 @@ const SwapInterface = () => {
                             Processing
                           </>
                         ) : (
-                          'Pending Approval'
+                          'Processing'
                         )}
                       </Badge>
                     </div>
