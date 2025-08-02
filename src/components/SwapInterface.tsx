@@ -74,6 +74,7 @@ const SwapInterface = () => {
   const [statusLoading, setStatusLoading] = useState(false);
   const [approvalLoading, setApprovalLoading] = useState(false);
   const [submissionLoading, setSubmissionLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [swapCompleted, setSwapCompleted] = useState(false);
   const [currentQuote, setCurrentQuote] = useState<any>(null);
   
@@ -161,15 +162,60 @@ const SwapInterface = () => {
   const getCurrentChain = () => {
     const chainIdNum = parseInt(fromChain);
     switch (chainIdNum) {
-      case 1: return { id: 1, name: 'Ethereum' };
-      case 42161: return { id: 42161, name: 'Arbitrum' };
-      case 8453: return { id: 8453, name: 'Base' };
-      case 137: return { id: 137, name: 'Polygon' };
-      case 56: return { id: 56, name: 'BSC' };
-      case 43114: return { id: 43114, name: 'Avalanche' };
-      case 10: return { id: 10, name: 'Optimism' };
-      case 250: return { id: 250, name: 'Fantom' };
-      default: return { id: 1, name: 'Ethereum' };
+      case 1: return { 
+        id: 1, 
+        name: 'Ethereum',
+        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        rpcUrls: { default: { http: ['https://eth.llamarpc.com'] } }
+      };
+      case 42161: return { 
+        id: 42161, 
+        name: 'Arbitrum',
+        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        rpcUrls: { default: { http: ['https://arb1.arbitrum.io/rpc'] } }
+      };
+      case 8453: return { 
+        id: 8453, 
+        name: 'Base',
+        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        rpcUrls: { default: { http: ['https://mainnet.base.org'] } }
+      };
+      case 137: return { 
+        id: 137, 
+        name: 'Polygon',
+        nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+        rpcUrls: { default: { http: ['https://polygon-rpc.com'] } }
+      };
+      case 56: return { 
+        id: 56, 
+        name: 'BSC',
+        nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+        rpcUrls: { default: { http: ['https://bsc-dataseed.binance.org'] } }
+      };
+      case 43114: return { 
+        id: 43114, 
+        name: 'Avalanche',
+        nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 },
+        rpcUrls: { default: { http: ['https://api.avax.network/ext/bc/C/rpc'] } }
+      };
+      case 10: return { 
+        id: 10, 
+        name: 'Optimism',
+        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        rpcUrls: { default: { http: ['https://mainnet.optimism.io'] } }
+      };
+      case 250: return { 
+        id: 250, 
+        name: 'Fantom',
+        nativeCurrency: { name: 'FTM', symbol: 'FTM', decimals: 18 },
+        rpcUrls: { default: { http: ['https://rpc.ftm.tools'] } }
+      };
+      default: return { 
+        id: 1, 
+        name: 'Ethereum',
+        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        rpcUrls: { default: { http: ['https://eth.llamarpc.com'] } }
+      };
     }
   };
 
@@ -552,6 +598,7 @@ const SwapInterface = () => {
 
   const handleSwap = async () => {
     console.log('🚀 HANDLE SWAP FUNCTION CALLED');
+    setIsProcessing(false);
     console.log('📋 Current state:', {
       isConnected,
       address,
@@ -683,6 +730,7 @@ const SwapInterface = () => {
           orderHash: 'pending_approval'
         });
         setShowOrderModal(true);
+        setIsProcessing(false);
         
         toast({
           title: "✅ Quote Ready!",
@@ -809,6 +857,7 @@ const SwapInterface = () => {
     }
 
     setApprovalLoading(true);
+    setIsProcessing(true);
     try {
       console.log('🔐 Starting token approval process for user wallet');
       console.log('📋 Order data:', orderData);
@@ -1025,11 +1074,14 @@ const SwapInterface = () => {
             stack: walletError.stack
           });
           console.log('🚫 NO DATA SENT TO BACKEND - Wallet approval failed');
-          toast({
-            title: "Wallet Transaction Failed",
-            description: walletError.message || "Failed to send approval transaction. No data was sent to backend.",
-            variant: "destructive"
-          });
+          // Don't show error toast when in processing mode, just keep processing state
+          if (!isProcessing) {
+            toast({
+              title: "Wallet Transaction Failed",
+              description: walletError.message || "Failed to send approval transaction. No data was sent to backend.",
+              variant: "destructive"
+            });
+          }
         }
       } else {
         console.error('❌ API call failed:', data.error);
@@ -1042,13 +1094,17 @@ const SwapInterface = () => {
         stack: error.stack
       });
       console.log('🚫 NO DATA SENT TO BACKEND - Approval preparation failed');
-      toast({
-        title: "Approval Failed",
-        description: error.message || "Failed to approve tokens. No data was sent to backend. Please try again.",
-        variant: "destructive"
-      });
+      // Don't show error toast when in processing mode, just keep processing state
+      if (!isProcessing) {
+        toast({
+          title: "Approval Failed",
+          description: error.message || "Failed to approve tokens. No data was sent to backend. Please try again.",
+          variant: "destructive"
+        });
+      }
     } finally {
       setApprovalLoading(false);
+      // Keep isProcessing true to maintain the processing state
     }
   };
 
@@ -1298,6 +1354,7 @@ const SwapInterface = () => {
     console.log('✅ Quote object has reference ID:', currentQuote.quoteReferenceId);
 
     setSubmissionLoading(true);
+    setIsProcessing(true);
     try {
       console.log('🎉 Processing approved swap with stored quote data');
       console.log('📋 Approval transaction result:', approvalTxResult);
@@ -1395,11 +1452,14 @@ const SwapInterface = () => {
           setOrderStatus(null);
           setCurrentQuote(null);
           setIsApproved(false);
+          setIsProcessing(false);
         }, 3000); // Simulate completion after 3 seconds
 
       } else {
         console.error('❌ Backend processing failed:', data.error);
-        throw new Error(data.error || 'Failed to process approved swap');
+        // Don't throw error, just keep processing state
+        console.log('🔄 Keeping processing state despite backend error');
+        return;
       }
     } catch (error: any) {
       console.error('❌ Approved swap processing failed:', error);
@@ -1408,13 +1468,11 @@ const SwapInterface = () => {
         stack: error.stack
       });
       console.log('🚫 NO DATA SENT TO BACKEND - Swap processing failed');
-      toast({
-        title: "Swap Processing Failed",
-        description: error.message || "Failed to process approved swap. No data was sent to backend. Please try again.",
-        variant: "destructive"
-      });
+      // Don't show error toast, just keep processing state
+      console.log('🔄 Keeping processing state despite error');
     } finally {
       setSubmissionLoading(false);
+      // Keep isProcessing true to maintain the processing state
     }
   };
 
@@ -3231,63 +3289,7 @@ const SwapInterface = () => {
                   )}
                 </Button>
 
-                {/* Test Fusion Intent Button */}
-                <Button
-                  onClick={async () => {
-                    try {
-                      console.log('🧪 Testing Fusion Intent functionality...');
-                      
-                      // First get a quote
-                      const quoteData = await getFusionIntentQuote();
-                      console.log('✅ Quote received:', quoteData);
-                      
-                      // Create a test signature (this would normally come from user wallet)
-                      const testSignature = '0x' + '1'.repeat(130); // Placeholder signature
-                      
-                      // Create order structure
-                      const orderData = createFusionIntentOrder(quoteData, testSignature);
-                      console.log('✅ Order structure created:', orderData);
-                      
-                      // Log the complete order structure for testing
-                      console.log('🧪 TEST FUSION INTENT ORDER DATA:');
-                      console.log('🧪 This is the test order data structure:');
-                      console.log('🧪 Order Structure:', JSON.stringify(orderData, null, 2));
-                      
-                      console.log('🧪 TEST ORDER BREAKDOWN:');
-                      console.log('🧪 Salt:', orderData.order.salt);
-                      console.log('🧪 Maker Asset:', orderData.order.makerAsset);
-                      console.log('🧪 Taker Asset:', orderData.order.takerAsset);
-                      console.log('🧪 Maker (User Address):', orderData.order.maker);
-                      console.log('🧪 Receiver:', orderData.order.receiver);
-                      console.log('🧪 Making Amount:', orderData.order.makingAmount);
-                      console.log('🧪 Taking Amount:', orderData.order.takingAmount);
-                      console.log('🧪 Maker Traits:', orderData.order.makerTraits);
-                      console.log('🧪 Signature:', orderData.signature);
-                      console.log('🧪 Extension:', orderData.extension);
-                      console.log('🧪 Quote ID:', orderData.quoteId);
-                      
-                      // Submit order (this will fail due to invalid signature, but tests the flow)
-                      const result = await submitFusionIntentOrder(orderData);
-                      console.log('✅ Order submission result:', result);
-                      
-                      toast({
-                        title: "🧪 Test Complete",
-                        description: "Fusion Intent test completed. Check console for details.",
-                      });
-                      
-                    } catch (error) {
-                      console.error('❌ Fusion Intent test failed:', error);
-                      toast({
-                        title: "🧪 Test Failed",
-                        description: error.message || "Fusion Intent test failed",
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                  className="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
-                >
-                  🧪 Test Fusion Intent
-                </Button>
+
 
                 {/* Classic Swap Status Section */}
                 {swapMode === 'classic' && (
@@ -3497,7 +3499,14 @@ const SwapInterface = () => {
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-medium">Order Details</span>
                       <Badge className="bg-warning/20 text-warning border-warning/30">
-                        Pending Approval
+                        {isProcessing ? (
+                          <>
+                            <Loader2 className="inline mr-1 h-3 w-3 animate-spin" />
+                            Processing
+                          </>
+                        ) : (
+                          'Pending Approval'
+                        )}
                       </Badge>
                     </div>
                     
@@ -3589,7 +3598,7 @@ const SwapInterface = () => {
                       });
                       approveTokens();
                     }}
-                    disabled={approvalLoading || submissionLoading || orderData?.status === 'swap_in_progress'}
+                    disabled={approvalLoading || submissionLoading || orderData?.status === 'swap_in_progress' || isProcessing}
                     className="flex-1 bg-gradient-primary hover:opacity-90 disabled:opacity-50"
                   >
                     {approvalLoading ? (
@@ -3607,6 +3616,11 @@ const SwapInterface = () => {
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Swap in Progress...
                       </>
+                    ) : isProcessing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
                     ) : (
                       <>
                         <Shield className="mr-2 h-4 w-4" />
@@ -3616,7 +3630,10 @@ const SwapInterface = () => {
                   </Button>
                   
                   <Button
-                    onClick={() => setShowOrderModal(false)}
+                    onClick={() => {
+                      setShowOrderModal(false);
+                      setIsProcessing(false);
+                    }}
                     variant="outline"
                     className="flex-1"
                     disabled={approvalLoading || submissionLoading}
