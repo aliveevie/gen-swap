@@ -1191,6 +1191,41 @@ const SwapInterface = () => {
 
       console.log('✅ EIP-712 signature received:', signature);
 
+      // Create the complete order structure for Fusion Intent API
+      const completeOrderData = {
+        order: {
+          salt: salt,
+          makerAsset: getTokenAddress(fromChain, fromToken),
+          takerAsset: takerAsset,
+          maker: address,
+          receiver: '0x0000000000000000000000000000000000000000',
+          makingAmount: Math.floor(parseFloat(fromAmount) * Math.pow(10, getTokenDecimals(fromToken))).toString(),
+          takingAmount: takingAmount,
+          makerTraits: makerTraits
+        },
+        signature: signature,
+        extension: '0x',
+        quoteId: currentQuote.quoteReferenceId || 'default'
+      };
+
+      // Log the complete order structure for Fusion Intent API
+      console.log('🚀 COMPLETE FUSION INTENT ORDER DATA:');
+      console.log('🚀 This is the exact data that will be sent to 1inch Fusion Intent API:');
+      console.log('🚀 Order Structure:', JSON.stringify(completeOrderData, null, 2));
+      
+      console.log('🚀 ORDER BREAKDOWN:');
+      console.log('🚀 Salt:', completeOrderData.order.salt);
+      console.log('🚀 Maker Asset:', completeOrderData.order.makerAsset);
+      console.log('🚀 Taker Asset:', completeOrderData.order.takerAsset);
+      console.log('🚀 Maker (User Address):', completeOrderData.order.maker);
+      console.log('🚀 Receiver:', completeOrderData.order.receiver);
+      console.log('🚀 Making Amount:', completeOrderData.order.makingAmount);
+      console.log('🚀 Taking Amount:', completeOrderData.order.takingAmount);
+      console.log('🚀 Maker Traits:', completeOrderData.order.makerTraits);
+      console.log('🚀 Signature:', completeOrderData.signature);
+      console.log('🚀 Extension:', completeOrderData.extension);
+      console.log('🚀 Quote ID:', completeOrderData.quoteId);
+
       // Decode and analyze the signature
       console.log('🔐 SIGNATURE ANALYSIS:');
       console.log('🔐 Full signature:', signature);
@@ -1370,6 +1405,160 @@ const SwapInterface = () => {
       });
     } finally {
       setSubmissionLoading(false);
+    }
+  };
+
+  // Submit Fusion Intent order directly to 1inch API
+  const submitFusionIntentOrder = async (orderData: any) => {
+    if (!address || !fromChain) {
+      console.error('❌ Missing required data for Fusion Intent order');
+      toast({
+        title: "Error",
+        description: "No wallet address or chain selected",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log('🚀 Submitting Fusion Intent order directly to 1inch API');
+      console.log('📋 Order data:', orderData);
+
+      const response = await fetch(`${API_BASE_URL}/fusion-intent/submit-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chainId: parseInt(fromChain),
+          orderData: orderData
+        })
+      });
+
+      console.log('📡 Fusion Intent API response status:', response.status);
+      const data = await response.json();
+      console.log('📡 Fusion Intent API response data:', data);
+
+      if (data.success) {
+        console.log('✅ Fusion Intent order submitted successfully:', data.data);
+        
+        toast({
+          title: "✅ Order Submitted!",
+          description: "Fusion Intent order submitted to 1inch API successfully",
+        });
+
+        return data.data;
+      } else {
+        console.error('❌ Fusion Intent order submission failed:', data.error);
+        throw new Error(data.error || 'Failed to submit Fusion Intent order');
+      }
+    } catch (error: any) {
+      console.error('❌ Fusion Intent order submission failed:', error);
+      toast({
+        title: "Order Submission Failed",
+        description: error.message || "Failed to submit Fusion Intent order",
+        variant: "destructive"
+      });
+      throw error;
+    }
+  };
+
+  // Get Fusion Intent quote from 1inch API
+  const getFusionIntentQuote = async () => {
+    if (!address || !fromChain || !toChain || !fromToken || !toToken || !fromAmount) {
+      console.error('❌ Missing required data for Fusion Intent quote');
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log('🔍 Getting Fusion Intent quote from 1inch API');
+
+      const response = await fetch(`${API_BASE_URL}/fusion-intent/quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          srcChainId: parseInt(fromChain),
+          dstChainId: parseInt(toChain),
+          srcTokenAddress: getTokenAddress(fromChain, fromToken),
+          dstTokenAddress: getTokenAddress(toChain, toToken),
+          amount: Math.floor(parseFloat(fromAmount) * Math.pow(10, getTokenDecimals(fromToken))).toString(),
+          walletAddress: address
+        })
+      });
+
+      console.log('📡 Fusion Intent quote response status:', response.status);
+      const data = await response.json();
+      console.log('📡 Fusion Intent quote response data:', data);
+
+      if (data.success) {
+        console.log('✅ Fusion Intent quote received:', data.data);
+        
+        // Update the quote display
+        if (data.data.data && data.data.data.dstTokenAmount) {
+          const dstAmount = parseFloat(data.data.data.dstTokenAmount) / Math.pow(10, getTokenDecimals(toToken));
+          setToAmount(dstAmount.toString());
+        }
+        
+        toast({
+          title: "✅ Quote Received!",
+          description: "Fusion Intent quote retrieved successfully",
+        });
+
+        return data.data;
+      } else {
+        console.error('❌ Fusion Intent quote failed:', data.error);
+        throw new Error(data.error || 'Failed to get Fusion Intent quote');
+      }
+    } catch (error: any) {
+      console.error('❌ Fusion Intent quote failed:', error);
+      toast({
+        title: "Quote Failed",
+        description: error.message || "Failed to get Fusion Intent quote",
+        variant: "destructive"
+      });
+      throw error;
+    }
+  };
+
+  // Create Fusion Intent order with proper structure
+  const createFusionIntentOrder = (quoteData: any, signature: string) => {
+    try {
+      console.log('🔧 Creating Fusion Intent order structure');
+      console.log('📋 Quote data:', quoteData);
+      console.log('📋 Signature:', signature);
+
+      // Extract required data from quote
+      const quote = quoteData.data;
+      
+      // Create the order structure as per 1inch Fusion Intent API
+      const orderData = {
+        order: {
+          salt: quote.salt || Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
+          makerAsset: quote.srcTokenAddress,
+          takerAsset: quote.dstTokenAddress,
+          maker: address,
+          receiver: '0x0000000000000000000000000000000000000000',
+          makingAmount: quote.srcTokenAmount,
+          takingAmount: quote.dstTokenAmount,
+          makerTraits: quote.makerTraits || '0'
+        },
+        signature: signature,
+        extension: '0x',
+        quoteId: quote.quoteId || quote.id || 'default'
+      };
+
+      console.log('✅ Fusion Intent order structure created:', orderData);
+      return orderData;
+    } catch (error) {
+      console.error('❌ Failed to create Fusion Intent order structure:', error);
+      throw error;
     }
   };
 
@@ -1671,6 +1860,21 @@ const SwapInterface = () => {
           endpoint = '/ai/token-list';
           requestBody = {
             chainId: fromChain
+          };
+          break;
+
+        case 'fusion-intent-quote':
+          if (!fromChain || !toChain || !fromToken || !toToken || !fromAmount || !address) {
+            throw new Error('Please fill in all swap fields and connect wallet first');
+          }
+          endpoint = '/ai/fusion-intent-quote';
+          requestBody = {
+            srcChainId: parseInt(fromChain),
+            dstChainId: parseInt(toChain),
+            srcTokenAddress: getTokenAddress(fromChain, fromToken),
+            dstTokenAddress: getTokenAddress(toChain, toToken),
+            amount: Math.floor(parseFloat(fromAmount) * Math.pow(10, getTokenDecimals(fromToken))).toString(),
+            walletAddress: address
           };
           break;
 
@@ -2053,6 +2257,64 @@ const SwapInterface = () => {
                     `Get Quote & Review: ${fromAmount} ${fromToken} → ${toAmount} ${toToken}`
                   )}
                 </Button>
+
+                {/* Test Fusion Intent Button */}
+                <Button
+                  onClick={async () => {
+                    try {
+                      console.log('🧪 Testing Fusion Intent functionality...');
+                      
+                      // First get a quote
+                      const quoteData = await getFusionIntentQuote();
+                      console.log('✅ Quote received:', quoteData);
+                      
+                      // Create a test signature (this would normally come from user wallet)
+                      const testSignature = '0x' + '1'.repeat(130); // Placeholder signature
+                      
+                      // Create order structure
+                      const orderData = createFusionIntentOrder(quoteData, testSignature);
+                      console.log('✅ Order structure created:', orderData);
+                      
+                      // Log the complete order structure for testing
+                      console.log('🧪 TEST FUSION INTENT ORDER DATA:');
+                      console.log('🧪 This is the test order data structure:');
+                      console.log('🧪 Order Structure:', JSON.stringify(orderData, null, 2));
+                      
+                      console.log('🧪 TEST ORDER BREAKDOWN:');
+                      console.log('🧪 Salt:', orderData.order.salt);
+                      console.log('🧪 Maker Asset:', orderData.order.makerAsset);
+                      console.log('🧪 Taker Asset:', orderData.order.takerAsset);
+                      console.log('🧪 Maker (User Address):', orderData.order.maker);
+                      console.log('🧪 Receiver:', orderData.order.receiver);
+                      console.log('🧪 Making Amount:', orderData.order.makingAmount);
+                      console.log('🧪 Taking Amount:', orderData.order.takingAmount);
+                      console.log('🧪 Maker Traits:', orderData.order.makerTraits);
+                      console.log('🧪 Signature:', orderData.signature);
+                      console.log('🧪 Extension:', orderData.extension);
+                      console.log('🧪 Quote ID:', orderData.quoteId);
+                      
+                      // Submit order (this will fail due to invalid signature, but tests the flow)
+                      const result = await submitFusionIntentOrder(orderData);
+                      console.log('✅ Order submission result:', result);
+                      
+                      toast({
+                        title: "🧪 Test Complete",
+                        description: "Fusion Intent test completed. Check console for details.",
+                      });
+                      
+                    } catch (error) {
+                      console.error('❌ Fusion Intent test failed:', error);
+                      toast({
+                        title: "🧪 Test Failed",
+                        description: error.message || "Fusion Intent test failed",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                  className="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
+                >
+                  🧪 Test Fusion Intent
+                </Button>
               </CardContent>
             </Card>
           </div>
@@ -2363,7 +2625,7 @@ const SwapInterface = () => {
       </Dialog>
 
       {/* AI Chat Interface */}
-      <div className="fixed bottom-20 md:bottom-24 right-4 md:right-6 z-[9999]">
+      <div className="fixed bottom-32 md:bottom-40 right-4 md:right-6 z-[9999]">
         {/* Chat Toggle Button */}
         {!isChatOpen && (
           <Button
@@ -2539,6 +2801,15 @@ const SwapInterface = () => {
                       className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
                     >
                       📋 Token List
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('fusion-intent-quote')}
+                      disabled={isChatLoading}
+                      className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
+                    >
+                      🔥 Fusion Intent
                     </Button>
                     <Button
                       variant="outline"

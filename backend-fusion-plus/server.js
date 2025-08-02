@@ -1746,6 +1746,113 @@ app.post('/api/ai/token-list', async (req, res) => {
   }
 });
 
+// Fusion Intent Quote endpoint
+app.post('/api/fusion-intent/quote', async (req, res) => {
+  try {
+    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress } = req.body;
+    
+    console.log('🔍 Fusion Intent quote request received:', { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress });
+    
+    if (!srcChainId || !dstChainId || !srcTokenAddress || !dstTokenAddress || !amount || !walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'All parameters are required: srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress'
+      });
+    }
+
+    const result = await deFiTools.getFusionIntentQuote({
+      srcChainId: parseInt(srcChainId),
+      dstChainId: parseInt(dstChainId),
+      srcTokenAddress,
+      dstTokenAddress,
+      amount,
+      walletAddress
+    });
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Fusion Intent quote error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get Fusion Intent quote'
+    });
+  }
+});
+
+// Fusion Intent Order Submission endpoint
+app.post('/api/fusion-intent/submit-order', async (req, res) => {
+  try {
+    const { chainId, orderData } = req.body;
+    
+    console.log('🚀 Fusion Intent order submission request received for chain:', chainId);
+    
+    if (!chainId || !orderData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Chain ID and order data are required'
+      });
+    }
+
+    const result = await deFiTools.submitFusionIntentOrder(parseInt(chainId), orderData);
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Fusion Intent order submission error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to submit Fusion Intent order'
+    });
+  }
+});
+
+// AI Fusion Intent Quote Analysis endpoint
+app.post('/api/ai/fusion-intent-quote', async (req, res) => {
+  try {
+    const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress } = req.body;
+    
+    console.log('🤖 AI Fusion Intent quote analysis request received');
+    
+    if (!srcChainId || !dstChainId || !srcTokenAddress || !dstTokenAddress || !amount || !walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'All parameters are required: srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress'
+      });
+    }
+
+    const result = await aiTools.getFusionIntentQuoteWithAnalysis({
+      srcChainId: parseInt(srcChainId),
+      dstChainId: parseInt(dstChainId),
+      srcTokenAddress,
+      dstTokenAddress,
+      amount,
+      walletAddress
+    });
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Fusion Intent quote analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get Fusion Intent quote analysis'
+    });
+  }
+});
+
 // AI Educational Content endpoint
 app.post('/api/ai/educational-content', async (req, res) => {
   try {

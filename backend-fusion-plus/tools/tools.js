@@ -570,6 +570,131 @@ class DeFiTools {
   }
 
   /**
+   * Submit Fusion Intent order directly to 1inch API
+   * @param {number} chainId - Chain ID
+   * @param {Object} orderData - Order data with signature
+   * @returns {Promise<Object>} Order submission result
+   */
+  async submitFusionIntentOrder(chainId, orderData) {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      console.log(`🚀 Submitting Fusion Intent order for chain ${chainId}...`);
+
+      const url = `https://api.1inch.dev/fusion/relayer/v2.0/${chainId}/order/submit`;
+
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${this.devPortalKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        timeout: 30000
+      };
+
+      // Validate required fields
+      const requiredFields = ['order', 'signature', 'extension', 'quoteId'];
+      for (const field of requiredFields) {
+        if (!orderData[field]) {
+          throw new Error(`Missing required field: ${field}`);
+        }
+      }
+
+      // Validate order structure
+      const orderRequiredFields = ['salt', 'makerAsset', 'takerAsset', 'maker', 'receiver', 'makingAmount', 'takingAmount', 'makerTraits'];
+      for (const field of orderRequiredFields) {
+        if (!orderData.order[field]) {
+          throw new Error(`Missing required order field: ${field}`);
+        }
+      }
+
+      console.log('📋 Order data being submitted:', JSON.stringify(orderData, null, 2));
+
+      const response = await axios.post(url, orderData, config);
+
+      console.log(`✅ Fusion Intent order submitted successfully:`, response.data);
+
+      return {
+        success: true,
+        data: response.data,
+        chainId: chainId,
+        orderHash: response.data?.orderHash || null,
+        timestamp: new Date().toISOString(),
+        source: '1inch_fusion_intent_api_v2.0'
+      };
+
+    } catch (error) {
+      console.error(`❌ Fusion Intent order submission failed for chain ${chainId}:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to submit Fusion Intent order',
+        chainId: chainId,
+        orderData: orderData,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get Fusion Intent quote from 1inch API
+   * @param {Object} quoteParams - Quote parameters
+   * @returns {Promise<Object>} Quote result
+   */
+  async getFusionIntentQuote(quoteParams) {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      const { srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, amount, walletAddress } = quoteParams;
+
+      console.log(`🔍 Getting Fusion Intent quote for ${srcChainId} -> ${dstChainId}...`);
+
+      const url = `https://api.1inch.dev/fusion/relayer/v2.0/${srcChainId}/quote`;
+
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${this.devPortalKey}`,
+          'Accept': 'application/json'
+        },
+        params: {
+          srcTokenAddress,
+          dstTokenAddress,
+          amount,
+          walletAddress,
+          dstChainId
+        },
+        timeout: 15000
+      };
+
+      const response = await axios.get(url, config);
+
+      console.log(`✅ Fusion Intent quote retrieved:`, response.data);
+
+      return {
+        success: true,
+        data: response.data,
+        quoteParams: quoteParams,
+        timestamp: new Date().toISOString(),
+        source: '1inch_fusion_intent_api_v2.0'
+      };
+
+    } catch (error) {
+      console.error(`❌ Fusion Intent quote retrieval failed:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get Fusion Intent quote',
+        quoteParams: quoteParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Get network statistics
    * @param {number} chainId - Chain ID
    * @returns {Promise<Object>} Network statistics
@@ -632,5 +757,7 @@ module.exports = {
   calculateOptimalGas: (chainId, priority) => deFiTools.calculateOptimalGas(chainId, priority),
   getWalletAnalysis: (chainId, walletAddress) => deFiTools.getWalletAnalysis(chainId, walletAddress),
   getNetworkStats: (chainId) => deFiTools.getNetworkStats(chainId),
+  submitFusionIntentOrder: (chainId, orderData) => deFiTools.submitFusionIntentOrder(chainId, orderData),
+  getFusionIntentQuote: (quoteParams) => deFiTools.getFusionIntentQuote(quoteParams),
   validateConfiguration: () => deFiTools.validateConfiguration()
 }; 

@@ -797,6 +797,109 @@ Focus on actionable insights for DeFi users.`;
   }
 
   /**
+   * Analyze Fusion Intent order with AI
+   * @param {Object} orderData - Fusion Intent order data
+   * @returns {Promise<Object>} AI analysis
+   */
+  async analyzeFusionIntentOrder(orderData) {
+    try {
+      console.log(`🤖 Analyzing Fusion Intent order...`);
+
+      const prompt = `Analyze this Fusion Intent order and provide insights:
+
+Order Data:
+${JSON.stringify(orderData, null, 2)}
+
+Please provide:
+1. Order structure analysis
+2. Security assessment
+3. Execution efficiency
+4. Cost optimization opportunities
+5. Risk factors and recommendations
+6. Best practices compliance
+
+Focus on Fusion Intent specific features and advantages.`;
+
+      const result = await this.generateAIResponse(prompt, { orderData });
+      
+      return {
+        success: true,
+        analysis: result.response || result.fallback,
+        orderData: orderData,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Fusion Intent order analysis failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to analyze Fusion Intent order',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get Fusion Intent quote with AI analysis
+   * @param {Object} quoteParams - Quote parameters
+   * @returns {Promise<Object>} Quote with AI analysis
+   */
+  async getFusionIntentQuoteWithAnalysis(quoteParams) {
+    try {
+      console.log(`🤖 Getting Fusion Intent quote with AI analysis...`);
+
+      // Import the tools module to get quote data
+      const { getFusionIntentQuote } = require('./tools.js');
+      
+      const quoteResult = await getFusionIntentQuote(quoteParams);
+      
+      if (!quoteResult.success) {
+        throw new Error(`Failed to get Fusion Intent quote: ${quoteResult.error}`);
+      }
+
+      const quoteData = quoteResult.data;
+      const prompt = `Analyze this Fusion Intent quote and provide insights:
+
+Quote Parameters:
+${JSON.stringify(quoteParams, null, 2)}
+
+Quote Data:
+${JSON.stringify(quoteData, null, 2)}
+
+Please provide:
+1. Quote efficiency analysis
+2. Cost breakdown and optimization
+3. Execution timing recommendations
+4. Risk assessment
+5. Alternative route suggestions
+6. Best practices for Fusion Intent
+
+Make it actionable for users.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { quoteData, quoteParams });
+      
+      return {
+        success: true,
+        quoteData: quoteData,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        quoteParams: quoteParams,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Fusion Intent quote analysis failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get Fusion Intent quote with analysis',
+        quoteParams: quoteParams,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Optimize swap parameters with AI
    * @param {Object} swapRequest - Swap request parameters
    * @returns {Promise<Object>} Optimized parameters
@@ -856,5 +959,7 @@ module.exports = {
   getComprehensivePriceAnalysis: (tokens) => aiTools.getComprehensivePriceAnalysis(tokens),
   getWalletBalanceAnalysis: (chainId, walletAddress) => aiTools.getWalletBalanceAnalysis(chainId, walletAddress),
   getTokenListAnalysis: (chainId) => aiTools.getTokenListAnalysis(chainId),
+  analyzeFusionIntentOrder: (orderData) => aiTools.analyzeFusionIntentOrder(orderData),
+  getFusionIntentQuoteWithAnalysis: (quoteParams) => aiTools.getFusionIntentQuoteWithAnalysis(quoteParams),
   validateConfiguration: () => aiTools.validateConfiguration()
 }; 
