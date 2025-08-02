@@ -86,11 +86,12 @@ const SwapInterface = () => {
     content: string;
     timestamp: Date;
     isLoading?: boolean;
+    swapData?: any;
   }>>([
     {
       id: '1',
       type: 'ai',
-      content: 'Hello! I\'m your AI DeFi assistant. I can help you with cross-chain swaps, explain token prices, check balances, and answer any questions about the GenSwap platform. How can I help you today?',
+      content: 'Hello! I\'m your AI DeFi assistant. I can help you with cross-chain swaps, explain token prices, check balances, and answer any questions about the GenSwap platform.\n\n💡 **Try natural language swaps:**\n"swap 1.2 USDC on arbitrum to polygon"\n"swap 0.5 ETH from ethereum to base"\n\nHow can I help you today?',
       timestamp: new Date()
     }
   ]);
@@ -1679,6 +1680,303 @@ const SwapInterface = () => {
     console.log('🔍 Chat state changed:', { isChatOpen, isChatMinimized });
   }, [isChatOpen, isChatMinimized]);
 
+  // Parse natural language swap requests
+  const parseSwapRequest = (message: string) => {
+    const lowerMessage = message.toLowerCase();
+    
+    // Pattern: "swap [amount] [token] on [fromChain] to [toChain]"
+    const swapPattern = /swap\s+([\d.]+)\s+(\w+)\s+on\s+(\w+)\s+to\s+(\w+)/i;
+    const match = message.match(swapPattern);
+    
+    if (match) {
+      const [, amount, token, fromChainName, toChainName] = match;
+      
+      // Map chain names to chain IDs
+      const chainMap: { [key: string]: string } = {
+        'ethereum': '1',
+        'eth': '1',
+        'mainnet': '1',
+        'arbitrum': '42161',
+        'arb': '42161',
+        'polygon': '137',
+        'matic': '137',
+        'base': '8453',
+        'optimism': '10',
+        'op': '10',
+        'bsc': '56',
+        'binance': '56',
+        'avalanche': '43114',
+        'avax': '43114',
+        'fantom': '250',
+        'ftm': '250'
+      };
+      
+      const fromChainId = chainMap[fromChainName.toLowerCase()];
+      const toChainId = chainMap[toChainName.toLowerCase()];
+      
+      if (fromChainId && toChainId) {
+        return {
+          type: 'swap_request',
+          amount: parseFloat(amount),
+          token: token.toUpperCase(),
+          fromChain: fromChainId,
+          toChain: toChainId,
+          isValid: true
+        };
+      }
+    }
+    
+    return { type: 'other', isValid: false };
+  };
+
+  // Handle Fusion Intent swap from chat
+  const handleChatSwap = async (swapData: any) => {
+    try {
+      console.log('🚀 Processing chat swap request:', swapData);
+      
+      // Update UI state with parsed data
+      setFromChain(swapData.fromChain);
+      setToChain(swapData.toChain);
+      setFromToken(swapData.token);
+      setToToken(swapData.token); // Default to same token
+      setFromAmount(swapData.amount.toString());
+      
+      // Wait for state updates
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Use the same wallet detection pattern as main swap function
+      console.log('🔍 Wallet connection status:', { isConnected, address });
+      
+      // Check if wallet is connected (same as handleSwap)
+      if (!isConnected || !address) {
+        console.log('❌ Wallet not connected');
+        return {
+          success: false,
+          message: '❌ **Wallet Not Connected**\n\nPlease connect your wallet first to execute this swap:\n\n1. **Click "Connect Wallet"** in the top right of the app\n2. **Unlock your wallet** and approve the connection\n3. **Try the swap request again**\n\nMake sure your wallet is unlocked and you\'re on the correct network.'
+        };
+      }
+      
+      console.log('✅ Wallet connection verified successfully');
+      
+      // Get quote using existing Fusion Intent API
+      const quoteData = await getFusionIntentQuote();
+      
+      if (!quoteData) {
+        return {
+          success: false,
+          message: 'Failed to get quote for this swap. Please check your inputs.'
+        };
+      }
+      
+      // Calculate expected output amount
+      const expectedOutput = parseFloat(quoteData.data.dstTokenAmount) / Math.pow(10, getTokenDecimals(swapData.token));
+      
+      return {
+        success: true,
+        message: `📊 **Quote Received!**\n\n**Swap Details:**\n• From: ${swapData.amount} ${swapData.token} on ${swapData.fromChain}\n• To: ${expectedOutput.toFixed(6)} ${swapData.token} on ${swapData.toChain}\n\n**Source:** ${quoteData.data.source || '1inch API'}\n\n**Ready to execute swap!**`,
+        quoteData: quoteData,
+        swapData: swapData,
+        expectedOutput: expectedOutput,
+        requiresConfirmation: true
+      };
+      
+    } catch (error) {
+      console.error('❌ Chat swap failed:', error);
+      return {
+        success: false,
+        message: `Swap failed: ${error.message || 'Unknown error'}`
+      };
+    }
+  };
+
+  // Execute the confirmed swap
+  const executeChatSwap = async (quoteData: any, swapData: any) => {
+    try {
+      console.log('🚀 Executing confirmed chat swap:', { quoteData, swapData });
+      
+      // Step 1: Check and handle token approval
+      const tokenAddress = getTokenAddress(swapData.fromChain, swapData.token);
+      const spenderAddress = '0x111111125421ca6dc452d289314280a0f8842a65';
+      const amount = Math.floor(swapData.amount * Math.pow(10, getTokenDecimals(swapData.token))).toString();
+      
+      // Check current allowance
+      const allowance = await checkTokenAllowance(tokenAddress, spenderAddress, address);
+      const needsApproval = BigInt(allowance) < BigInt(amount);
+      
+      if (needsApproval) {
+        console.log('🔐 Token approval required');
+        
+        // Prepare approval transaction
+        const approvalParams = {
+          tokenAddress: tokenAddress,
+          spenderAddress: spenderAddress,
+          amount: amount,
+          walletAddress: address,
+          chainId: parseInt(swapData.fromChain)
+        };
+        
+        const approvalResponse = await fetch(`${API_BASE_URL}/prepare-approval`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(approvalParams)
+        });
+        
+        const approvalData = await approvalResponse.json();
+        
+        if (!approvalData.success) {
+          throw new Error('Failed to prepare approval transaction');
+        }
+        
+        // Execute approval transaction
+        const approvalTx = approvalData.data.approvalTransaction;
+        const approvalResult = await writeContract({
+          address: approvalTx.to as `0x${string}`,
+          abi: [{
+            "constant": false,
+            "inputs": [
+              { "name": "spender", "type": "address" },
+              { "name": "amount", "type": "uint256" }
+            ],
+            "name": "approve",
+            "outputs": [{ "name": "", "type": "bool" }],
+            "payable": false,
+            "stateMutability": "nonpayable",
+            "type": "function"
+          }],
+          functionName: 'approve',
+          args: [approvalTx.data.slice(10, 50) as `0x${string}`, BigInt(approvalTx.data.slice(50))]
+        });
+        
+        console.log('✅ Token approval submitted:', approvalResult);
+      }
+      
+      // Step 2: Create order structure for Fusion Intent
+      const orderData = {
+        order: {
+          salt: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
+          makerAsset: tokenAddress,
+          takerAsset: getTokenAddress(swapData.toChain, swapData.token),
+          maker: address,
+          receiver: '0x0000000000000000000000000000000000000000',
+          makingAmount: amount,
+          takingAmount: quoteData.data.dstTokenAmount || '0',
+          makerTraits: '0'
+        },
+        extension: '0x',
+        quoteId: quoteData.data.quoteId || 'default'
+      };
+      
+      console.log('📋 Order data prepared:', orderData);
+      
+      // Step 3: Request user signature (same EIP-712 structure as main swap)
+      const signature = await requestFusionIntentSignature(orderData, address);
+      
+      // Step 4: Submit to Fusion Intent API
+      const submitResult = await submitFusionIntentOrder({
+        ...orderData,
+        signature: signature
+      });
+      
+      return {
+        success: true,
+        message: `🎉 **Swap Executed Successfully!**\n\n**Order Hash:** ${submitResult.data?.orderHash || 'N/A'}\n**Status:** Submitted to Fusion Intent\n**Source:** ${submitResult.data?.source || '1inch API'}\n\nYour swap is now being processed!`,
+        orderHash: submitResult.data?.orderHash
+      };
+      
+    } catch (error) {
+      console.error('❌ Execute chat swap failed:', error);
+      return {
+        success: false,
+        message: `❌ **Swap Execution Failed**\n\nError: ${error.message || 'Unknown error'}\n\nPlease try again or contact support.`
+      };
+    }
+  };
+
+  // Check token allowance for a specific spender
+  const checkTokenAllowance = async (tokenAddress: string, spenderAddress: string, ownerAddress: string) => {
+    try {
+      console.log('🔍 Checking token allowance:', { tokenAddress, spenderAddress, ownerAddress });
+      
+      const allowance = await publicClient.readContract({
+        address: tokenAddress as `0x${string}`,
+        abi: [
+          {
+            "constant": true,
+            "inputs": [
+              { "name": "owner", "type": "address" },
+              { "name": "spender", "type": "address" }
+            ],
+            "name": "allowance",
+            "outputs": [{ "name": "", "type": "uint256" }],
+            "payable": false,
+            "stateMutability": "view",
+            "type": "function"
+          }
+        ],
+        functionName: 'allowance',
+        args: [ownerAddress as `0x${string}`, spenderAddress as `0x${string}`]
+      });
+      
+      console.log('📋 Current allowance:', allowance);
+      return allowance.toString();
+      
+    } catch (error) {
+      console.error('❌ Error checking allowance:', error);
+      return '0';
+    }
+  };
+
+
+
+  // Request user signature for Fusion Intent order
+  const requestFusionIntentSignature = async (orderData: any, walletAddress: string) => {
+    try {
+      console.log('🔐 Requesting user signature for Fusion Intent order...');
+
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('No wallet provider available');
+      }
+
+      // EIP-712 domain for Fusion Intent
+      const domain = {
+        name: '1inch Fusion Intent',
+        version: '1',
+        chainId: parseInt(fromChain),
+        verifyingContract: '0x111111125421ca6dc452d289314280a0f8842a65'
+      };
+
+      const types = {
+        Order: [
+          { name: 'salt', type: 'uint256' },
+          { name: 'makerAsset', type: 'address' },
+          { name: 'takerAsset', type: 'address' },
+          { name: 'maker', type: 'address' },
+          { name: 'receiver', type: 'address' },
+          { name: 'makingAmount', type: 'uint256' },
+          { name: 'takingAmount', type: 'uint256' },
+          { name: 'makerTraits', type: 'uint256' }
+        ]
+      };
+
+      const message = orderData.order;
+
+      console.log('🔐 EIP-712 data to sign:', { domain, types, message });
+
+      // Request signature from wallet
+      const signature = await window.ethereum.request({
+        method: 'eth_signTypedData_v4',
+        params: [walletAddress, JSON.stringify({ domain, types, primaryType: 'Order', message })]
+      });
+
+      console.log('✅ Fusion Intent signature received:', signature);
+      return signature;
+
+    } catch (error) {
+      console.error('❌ Fusion Intent signature failed:', error);
+      throw error;
+    }
+  };
+
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
@@ -1706,7 +2004,39 @@ const SwapInterface = () => {
     setChatMessages(prev => [...prev, loadingMessage]);
 
     try {
-      // Call real AI API
+      // Check if this is a swap request
+      const swapRequest = parseSwapRequest(chatInput.trim());
+      
+      if (swapRequest.type === 'swap_request' && swapRequest.isValid) {
+        console.log('🔄 Detected swap request in chat:', swapRequest);
+        
+        // Add debug message about wallet status (simplified like main swap)
+        const walletStatus = `🔍 **Wallet Status:**\n- Connected: ${isConnected ? '✅ Yes' : '❌ No'}\n- Address: ${address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not available'}`;
+        
+        // Add debug message first
+        setChatMessages(prev => prev.filter(msg => !msg.isLoading).concat({
+          id: (Date.now() + 2).toString(),
+          type: 'ai',
+          content: walletStatus,
+          timestamp: new Date()
+        }));
+        
+        // Handle the swap request
+        const swapResult = await handleChatSwap(swapRequest);
+        
+        // Add the swap result
+        setChatMessages(prev => prev.concat({
+          id: (Date.now() + 3).toString(),
+          type: 'ai',
+          content: swapResult.message,
+          timestamp: new Date(),
+          swapData: swapResult.requiresConfirmation ? { quoteData: swapResult.quoteData, swapData: swapResult.swapData } : null
+        }));
+        
+        return;
+      }
+
+      // Call real AI API for other messages
       const response = await fetch(`${API_BASE_URL}/ai/chat`, {
         method: 'POST',
         headers: {
@@ -2734,6 +3064,37 @@ const SwapInterface = () => {
                             })}
                           </div>
                         )}
+                        
+                        {/* Confirmation Button for Swap */}
+                        {message.swapData && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <Button
+                              onClick={async () => {
+                                try {
+                                  const result = await executeChatSwap(message.swapData.quoteData, message.swapData.swapData);
+                                  setChatMessages(prev => prev.concat({
+                                    id: Date.now().toString(),
+                                    type: 'ai',
+                                    content: result.message,
+                                    timestamp: new Date()
+                                  }));
+                                } catch (error) {
+                                  console.error('Execute swap error:', error);
+                                  setChatMessages(prev => prev.concat({
+                                    id: Date.now().toString(),
+                                    type: 'ai',
+                                    content: '❌ Failed to execute swap. Please try again.',
+                                    timestamp: new Date()
+                                  }));
+                                }
+                              }}
+                              className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
+                            >
+                              🚀 Confirm & Execute Swap
+                            </Button>
+                          </div>
+                        )}
+                        
                         <div className={`text-xs mt-2 ${
                           message.type === 'user' ? 'text-blue-100' : 'text-gray-600 font-medium'
                         }`}>
@@ -2838,7 +3199,7 @@ const SwapInterface = () => {
                     <Input
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="Ask me about DeFi, swaps, or anything..."
+                      placeholder="Try: 'swap 1.2 USDC on arbitrum to polygon' or ask about DeFi..."
                       className="flex-1 bg-white border-gray-300 focus:border-blue-400 focus:ring-blue-400 rounded-xl text-gray-800 placeholder-gray-500"
                       disabled={isChatLoading}
                     />
