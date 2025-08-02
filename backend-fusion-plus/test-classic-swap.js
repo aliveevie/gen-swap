@@ -2,7 +2,7 @@ const axios = require('axios');
 require('dotenv').config();
 
 // Test configuration
-const API_BASE_URL = 'http://localhost:9056/api';
+const API_BASE_URL = 'https://gen-swap-server.vercel.app/api';
 
 // Test parameters for Base network
 const testParams = {

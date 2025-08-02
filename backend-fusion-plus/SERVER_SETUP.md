@@ -111,12 +111,12 @@ The server is configured to work with the React frontend running on:
 
 Test the server is running:
 ```bash
-curl http://localhost:9056/api/health
+curl https://gen-swap-server.vercel.app/api/health
 ```
 
 Get supported networks:
 ```bash
-curl http://localhost:9056/api/networks
+curl https://gen-swap-server.vercel.app/api/networks
 ```
 
 ## Troubleshooting
