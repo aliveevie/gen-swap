@@ -1664,14 +1664,34 @@ const SwapInterface = () => {
 
     setClassicSwapLoading(true);
     try {
-      // Get token addresses
+      // Get token addresses - Classic swap is single-chain only
       const srcTokenAddress = getTokenAddress(fromChain, fromToken);
-      const dstTokenAddress = getTokenAddress(fromChain, toToken); // Classic swap is single-chain
+      const dstTokenAddress = getTokenAddress(fromChain, toToken);
+      
+      // For classic swap, ensure we're on the same chain
+      if (fromChain !== toChain) {
+        toast({
+          title: "Error",
+          description: "Classic swap only works on the same network. Please select the same network for both tokens.",
+          variant: "destructive"
+        });
+        return;
+      }
       
       if (!srcTokenAddress || !dstTokenAddress) {
         toast({
           title: "Error",
           description: "Token addresses not found for selected network",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Check if we're trying to swap the same token
+      if (srcTokenAddress === dstTokenAddress) {
+        toast({
+          title: "Error",
+          description: "Cannot swap the same token. Please select different tokens for classic swap.",
           variant: "destructive"
         });
         return;
@@ -1941,7 +1961,7 @@ const SwapInterface = () => {
         chainId: parseInt(fromChain),
         signedTx: signedTx,
         swapParams: swapParams,
-        userRpcUrl: getRpcUrl(fromChain) || undefined
+        userRpcUrl: undefined
       };
 
       console.log('🚀 Executing classic swap:', executionData);
@@ -2016,7 +2036,8 @@ const SwapInterface = () => {
         }],
         functionName: 'approve',
         args: [classicApprovalTx.data.slice(10, 50) as `0x${string}`, BigInt(classicApprovalTx.data.slice(50))],
-        account: address
+        account: address,
+        chain: getCurrentChain()
       });
 
       console.log('✅ Classic approval transaction sent:', result);
@@ -2066,15 +2087,19 @@ const SwapInterface = () => {
         functionName: 'swap',
         args: [],
         value: BigInt(classicSwapTx.value || '0'),
-        account: address
+        account: address,
+        chain: getCurrentChain()
       });
 
       console.log('✅ Classic swap transaction sent:', result);
       
       // Execute the swap with the signed transaction
-      if (result) {
-        await executeClassicSwap(result);
-      }
+      // Note: writeContract returns void, so we need to handle this differently
+      // For now, we'll just show a success message
+      toast({
+        title: "Swap Transaction Sent",
+        description: "Your swap transaction has been submitted to the network.",
+      });
       
     } catch (error: any) {
       console.error('❌ Classic swap failed:', error);
@@ -2292,7 +2317,7 @@ const SwapInterface = () => {
           description: "Please approve the token spending in your wallet...",
         });
         
-        const approvalResult = await writeContract({
+                const approvalResult = await writeContract({
           address: approvalTx.to as `0x${string}`,
           abi: [{
             "constant": false,
@@ -2306,9 +2331,10 @@ const SwapInterface = () => {
             "stateMutability": "nonpayable",
             "type": "function"
           }],
-                  functionName: 'approve',
-        args: [approvalTx.data.slice(10, 50) as `0x${string}`, BigInt(approvalTx.data.slice(50))],
-        account: address
+          functionName: 'approve',
+          args: [approvalTx.data.slice(10, 50) as `0x${string}`, BigInt(approvalTx.data.slice(50))],
+          account: address,
+          chain: getCurrentChain()
         });
         
         console.log('✅ Token approval submitted:', approvalResult);
@@ -2948,7 +2974,11 @@ const SwapInterface = () => {
                       <Button
                         variant={swapMode === 'classic' ? 'default' : 'ghost'}
                         size="sm"
-                        onClick={() => setSwapMode('classic')}
+                        onClick={() => {
+                          setSwapMode('classic');
+                          // For classic swap, set both chains to the same
+                          setToChain(fromChain);
+                        }}
                         className="h-7 px-3 text-xs"
                       >
                         ⚡ Classic Swap
@@ -2966,6 +2996,19 @@ const SwapInterface = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Swap Mode Indicator */}
+                {swapMode === 'classic' && (
+                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-blue-600">⚡</span>
+                      <span className="text-sm font-medium text-blue-800">Classic Swap Mode</span>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Single-chain swap. Both tokens must be on the same network.
+                    </p>
+                  </div>
+                )}
+
                 {/* From Section */}
                 <div className="space-y-4">
                   <Label className="text-sm font-medium">From</Label>

@@ -885,8 +885,8 @@ class DeFiTools {
 
       // Check if approval is needed
       if (allowanceResult.success && quoteResult.success) {
-        const currentAllowance = BigInt(allowanceResult.data.allowance);
-        const requiredAmount = BigInt(amount);
+        const currentAllowance = BigInt(allowanceResult.data.allowance || '0');
+        const requiredAmount = BigInt(amount || '0');
         analysis.needsApproval = currentAllowance < requiredAmount;
       }
 
