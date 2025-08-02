@@ -2438,7 +2438,29 @@ const SwapInterface = () => {
                             <span className="text-sm text-gray-700 font-medium">AI is thinking...</span>
                           </div>
                         ) : (
-                          <div className="text-sm whitespace-pre-line leading-relaxed text-gray-800 font-medium">{message.content}</div>
+                          <div className="text-sm leading-relaxed text-gray-800 font-medium prose prose-sm max-w-none">
+                            {message.content.split('\n').map((line, index) => {
+                              if (line.startsWith('## ')) {
+                                return <h3 key={index} className="text-lg font-bold text-blue-600 mt-4 mb-2">{line.replace('## ', '')}</h3>;
+                              } else if (line.startsWith('### ')) {
+                                return <h4 key={index} className="text-base font-semibold text-gray-700 mt-3 mb-1">{line.replace('### ', '')}</h4>;
+                              } else if (line.startsWith('- **')) {
+                                const parts = line.replace('- **', '').split(':**');
+                                return (
+                                  <div key={index} className="flex items-start space-x-2 my-1">
+                                    <span className="font-semibold text-blue-600">{parts[0]}:</span>
+                                    <span>{parts[1] || ''}</span>
+                                  </div>
+                                );
+                              } else if (line.startsWith('- ')) {
+                                return <div key={index} className="ml-4 my-1">• {line.replace('- ', '')}</div>;
+                              } else if (line.trim() === '') {
+                                return <div key={index} className="h-2"></div>;
+                              } else {
+                                return <div key={index} className="my-1">{line}</div>;
+                              }
+                            })}
+                          </div>
                         )}
                         <div className={`text-xs mt-2 ${
                           message.type === 'user' ? 'text-blue-100' : 'text-gray-600 font-medium'

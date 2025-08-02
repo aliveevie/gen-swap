@@ -397,26 +397,88 @@ Make it practical for users planning transactions.`;
       }
 
       const balanceData = balanceResult.data;
-      const prompt = `Analyze this wallet balance data and provide insights:
+      
+      // Convert balances to human-readable format
+      const readableBalances = {};
+      let totalValueUSD = 0;
+      
+      if (balanceData.balances) {
+        for (const [tokenAddress, balance] of Object.entries(balanceData.balances)) {
+          if (balance && balance !== '0') {
+            // Convert from wei to human readable (assuming 18 decimals for most tokens)
+            const balanceInWei = BigInt(balance);
+            const balanceInEth = Number(balanceInWei) / Math.pow(10, 18);
+            
+            // Get token symbol from address (you can expand this mapping)
+            const tokenSymbol = getTokenSymbol(tokenAddress, chainId);
+            
+            readableBalances[tokenAddress] = {
+              symbol: tokenSymbol,
+              balance: balanceInEth,
+              balanceWei: balance,
+              address: tokenAddress
+            };
+            
+            // For ETH (0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee), estimate USD value
+            if (tokenAddress.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+              // Rough estimate: 1 ETH ≈ $2000 (you can make this dynamic)
+              totalValueUSD += balanceInEth * 2000;
+            }
+          }
+        }
+      }
+      
+      const prompt = `Analyze this wallet balance data and provide professional insights:
 
-Wallet Balance Data for ${walletAddress} on Chain ${chainId}:
-${JSON.stringify(balanceData, null, 2)}
+Wallet Balance Analysis for ${walletAddress} on Chain ${chainId}:
 
-Please provide:
-1. Portfolio overview and total value
-2. Token distribution analysis
-3. Notable holdings and their significance
-4. Portfolio diversification assessment
-5. Potential DeFi opportunities
-6. Risk assessment and recommendations
+Human-Readable Balances:
+${Object.entries(readableBalances).map(([addr, data]) => 
+  `- ${data.symbol}: ${data.balance.toFixed(6)} (${data.balanceWei} wei)`
+).join('\n')}
 
-Make it user-friendly and actionable for DeFi users.`;
+Total Estimated Portfolio Value: $${totalValueUSD.toLocaleString()}
+
+Please provide a professional analysis with the following structure:
+
+## Portfolio Overview
+- Total portfolio value and key metrics
+- Network and wallet summary
+
+## Token Holdings Analysis
+- Breakdown of significant holdings
+- Token distribution percentages
+- Notable positions and their implications
+
+## Market Context
+- Current market conditions
+- Token performance insights
+- Network-specific considerations
+
+## Risk Assessment
+- Portfolio concentration analysis
+- Diversification recommendations
+- Risk mitigation strategies
+
+## DeFi Opportunities
+- Yield farming possibilities
+- Liquidity provision opportunities
+- Staking and governance participation
+
+## Strategic Recommendations
+- Portfolio optimization suggestions
+- Investment strategy adjustments
+- Market timing considerations
+
+Make the response professional, data-driven, and actionable. Use proper formatting with markdown.`;
 
       const aiResult = await this.generateAIResponse(prompt, { balanceData, chainId, walletAddress });
       
       return {
         success: true,
         balanceData: balanceData,
+        readableBalances: readableBalances,
+        totalValueUSD: totalValueUSD,
         aiAnalysis: aiResult.response || aiResult.fallback,
         chainId: chainId,
         walletAddress: walletAddress,
@@ -435,6 +497,53 @@ Make it user-friendly and actionable for DeFi users.`;
         timestamp: new Date().toISOString()
       };
     }
+  }
+
+  /**
+   * Helper function to get token symbol from address
+   * @param {string} tokenAddress - Token contract address
+   * @param {number} chainId - Chain ID
+   * @returns {string} Token symbol
+   */
+  getTokenSymbol(tokenAddress, chainId) {
+    const tokenMappings = {
+      // Ethereum Mainnet
+      1: {
+        '0xa0b86a33e6441b8c4c8c8c8c8c8c8c8c8c8c8c8c': 'USDC',
+        '0xdac17f958d2ee523a2206206994597c13d831ec7': 'USDT',
+        '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 'WETH',
+        '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee': 'ETH',
+        '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': 'WBTC',
+        '0x6b175474e89094c44da98b954eedeac495271d0f': 'DAI'
+      },
+      // Arbitrum
+      42161: {
+        '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
+        '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 'USDT',
+        '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': 'WETH',
+        '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee': 'ETH',
+        '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8': 'USDC.e',
+        '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': 'DAI'
+      },
+      // Polygon
+      137: {
+        '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': 'USDC',
+        '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': 'USDT',
+        '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619': 'WETH',
+        '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee': 'MATIC',
+        '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270': 'WMATIC'
+      },
+      // Base
+      8453: {
+        '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': 'USDC',
+        '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': 'USDT',
+        '0x4200000000000000000000000000000000000006': 'WETH',
+        '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee': 'ETH'
+      }
+    };
+    
+    const chainTokens = tokenMappings[chainId] || {};
+    return chainTokens[tokenAddress.toLowerCase()] || 'UNKNOWN';
   }
 
   /**
