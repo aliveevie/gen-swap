@@ -16,6 +16,9 @@ const { Swapping } = require('./functions/orderWithGlobal.js');
 const { SDK, NetworkEnum, HashLock } = require('@1inch/cross-chain-sdk');
 // Import 1inch Price Feeds API functions
 const { priceFeedsAPI } = require('./functions/priceFeeds.js');
+// Import AI and DeFi tools
+const { aiTools } = require('./tools/ai.js');
+const { deFiTools } = require('./tools/tools.js');
 
 const app = express();
 const PORT = process.env.PORT || 9056;
@@ -1313,6 +1316,191 @@ app.get('/api/price-feeds/status', async (req, res) => {
   }
 });
 
+// ========================================
+// AI CHAT ENDPOINTS
+// ========================================
+
+// AI Chat endpoint
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const { message, context = {} } = req.body;
+    
+    console.log('🤖 AI Chat request received:', message.substring(0, 100) + '...');
+    
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Message is required'
+      });
+    }
+
+    const result = await aiTools.generateAIResponse(message, context);
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Chat error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to process AI chat request'
+    });
+  }
+});
+
+// AI Swap Analysis endpoint
+app.post('/api/ai/analyze-swap', async (req, res) => {
+  try {
+    const { swapData } = req.body;
+    
+    console.log('🔍 AI Swap analysis request received');
+    
+    if (!swapData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Swap data is required'
+      });
+    }
+
+    const result = await aiTools.analyzeSwapTransaction(swapData);
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Swap analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to analyze swap transaction'
+    });
+  }
+});
+
+// AI Market Insights endpoint
+app.post('/api/ai/market-insights', async (req, res) => {
+  try {
+    const { tokens, priceData } = req.body;
+    
+    console.log('📊 AI Market insights request received');
+    
+    if (!tokens || !Array.isArray(tokens)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tokens array is required'
+      });
+    }
+
+    const result = await aiTools.getMarketInsights(tokens, priceData || {});
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Market insights error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get market insights'
+    });
+  }
+});
+
+// AI Educational Content endpoint
+app.post('/api/ai/educational-content', async (req, res) => {
+  try {
+    const { topic } = req.body;
+    
+    console.log('📚 AI Educational content request received:', topic);
+    
+    if (!topic || !topic.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Topic is required'
+      });
+    }
+
+    const result = await aiTools.generateEducationalContent(topic);
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Educational content error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to generate educational content'
+    });
+  }
+});
+
+// AI Swap Optimization endpoint
+app.post('/api/ai/optimize-swap', async (req, res) => {
+  try {
+    const { swapRequest } = req.body;
+    
+    console.log('⚡ AI Swap optimization request received');
+    
+    if (!swapRequest) {
+      return res.status(400).json({
+        success: false,
+        error: 'Swap request is required'
+      });
+    }
+
+    const result = await aiTools.optimizeSwapParameters(swapRequest);
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Swap optimization error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to optimize swap parameters'
+    });
+  }
+});
+
+// AI Tools Status endpoint
+app.get('/api/ai/status', async (req, res) => {
+  try {
+    console.log('🔍 Checking AI tools status...');
+    
+    const aiStatus = aiTools.validateConfiguration();
+    const toolsStatus = deFiTools.validateConfiguration();
+    
+    res.json({
+      success: true,
+      data: {
+        ai: aiStatus,
+        tools: toolsStatus,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ AI Tools status error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get AI tools status'
+    });
+  }
+});
+
 // Complete swap execution (TRUE DeFi - user wallet handles everything)
 app.post('/api/complete-swap', async (req, res) => {
   try {
@@ -1380,6 +1568,12 @@ app.listen(PORT, () => {
   console.log(`💰 Price Feeds API: http://localhost:${PORT}/api/price-feeds`);
   console.log(`⚖️ Price Comparison: http://localhost:${PORT}/api/price-feeds/compare`);
   console.log(`🔍 Price Feeds Status: http://localhost:${PORT}/api/price-feeds/status`);
+  console.log(`🤖 AI Chat: http://localhost:${PORT}/api/ai/chat`);
+  console.log(`🔍 AI Swap Analysis: http://localhost:${PORT}/api/ai/analyze-swap`);
+  console.log(`📊 AI Market Insights: http://localhost:${PORT}/api/ai/market-insights`);
+  console.log(`📚 AI Educational Content: http://localhost:${PORT}/api/ai/educational-content`);
+  console.log(`⚡ AI Swap Optimization: http://localhost:${PORT}/api/ai/optimize-swap`);
+  console.log(`🔍 AI Tools Status: http://localhost:${PORT}/api/ai/status`);
   console.log(`🌐 Supported Networks: ${Object.keys(NETWORKS).join(', ')}`);
   console.log(`🔧 TRUE DeFi Status: ${process.env.DEV_PORTAL_KEY ? '✅ Ready for swaps' : '⚠️  DEV_PORTAL_KEY required'}`);
   console.log(`👤 User Role: Sign ALL transactions in their own wallet`);

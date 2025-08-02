@@ -1512,10 +1512,36 @@ const SwapInterface = () => {
     setChatMessages(prev => [...prev, loadingMessage]);
 
     try {
-      // Simulate AI response (replace with actual AI API call)
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Call real AI API
+      const response = await fetch(`${API_BASE_URL}/ai/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: chatInput.trim(),
+          context: {
+            fromChain,
+            toChain,
+            fromToken,
+            toToken,
+            fromAmount,
+            toAmount,
+            isConnected,
+            address,
+            currentQuote
+          }
+        })
+      });
+
+      const result = await response.json();
       
-      const aiResponse = generateAIResponse(chatInput.trim());
+      let aiResponse;
+      if (result.success && result.data.success) {
+        aiResponse = result.data.response || result.data.fallback;
+      } else {
+        aiResponse = 'Sorry, I encountered an error. Please try again.';
+      }
       
       // Remove loading message and add AI response
       setChatMessages(prev => prev.filter(msg => !msg.isLoading).concat({
@@ -1538,45 +1564,7 @@ const SwapInterface = () => {
     }
   };
 
-  const generateAIResponse = (userInput: string): string => {
-    const input = userInput.toLowerCase();
-    
-    // DeFi and swap related responses
-    if (input.includes('swap') || input.includes('exchange')) {
-      return 'I can help you with cross-chain swaps! Select your source and destination chains, choose your tokens, enter the amount, and I\'ll guide you through the process. The platform supports 8+ major networks including Ethereum, Polygon, Arbitrum, and more.';
-    }
-    
-    if (input.includes('price') || input.includes('quote')) {
-      return 'Token prices are fetched in real-time from 1inch Price Feeds API. You can see live prices when you select tokens, and I can help you understand price movements and market trends.';
-    }
-    
-    if (input.includes('balance') || input.includes('wallet')) {
-      return 'Your wallet balance is automatically checked when you connect. I can help you understand your token balances across different networks and ensure you have sufficient funds for swaps.';
-    }
-    
-    if (input.includes('network') || input.includes('chain')) {
-      return 'GenSwap supports 8 major networks: Ethereum, Arbitrum, Base, Polygon, BSC, Avalanche, Optimism, and Fantom. Each network has different gas fees and transaction speeds. Which network would you like to learn more about?';
-    }
-    
-    if (input.includes('gas') || input.includes('fee')) {
-      return 'Gas fees vary by network. Ethereum typically has higher fees but is the most secure. Layer 2 networks like Arbitrum and Polygon offer lower fees. I can help you choose the best network for your transaction.';
-    }
-    
-    if (input.includes('security') || input.includes('safe')) {
-      return 'GenSwap uses TRUE DeFi architecture - you maintain complete control of your wallet. All transactions are signed in your wallet, and the server only provides API access. No private keys are ever stored on our servers.';
-    }
-    
-    if (input.includes('help') || input.includes('how')) {
-      return 'I\'m here to help! I can assist with:\n• Cross-chain swaps\n• Token price information\n• Balance checking\n• Network selection\n• Security questions\n• Transaction troubleshooting\n\nJust ask me anything about DeFi or the platform!';
-    }
-    
-    if (input.includes('hello') || input.includes('hi')) {
-      return 'Hello! I\'m your AI DeFi assistant. I can help you navigate the GenSwap platform, understand cross-chain swaps, check token prices, and answer any DeFi-related questions. What would you like to know?';
-    }
-    
-    // Default response
-    return 'I\'m your AI DeFi assistant for GenSwap. I can help you with cross-chain swaps, token prices, wallet balances, network information, and general DeFi questions. How can I assist you today?';
-  };
+
 
   const toggleChat = () => {
     setIsChatOpen(!isChatOpen);
@@ -1587,6 +1575,120 @@ const SwapInterface = () => {
 
   const minimizeChat = () => {
     setIsChatMinimized(!isChatMinimized);
+  };
+
+  const handleQuickAction = async (action: string) => {
+    if (isChatLoading) return;
+
+    setIsChatLoading(true);
+    
+    // Add loading message
+    const loadingMessage = {
+      id: (Date.now() + 1).toString(),
+      type: 'ai' as const,
+      content: '',
+      timestamp: new Date(),
+      isLoading: true
+    };
+
+    setChatMessages(prev => [...prev, loadingMessage]);
+
+    try {
+      let endpoint = '';
+      let requestBody = {};
+
+      switch (action) {
+        case 'analyze-swap':
+          if (!fromToken || !toToken || !fromAmount) {
+            throw new Error('Please set up a swap first to analyze');
+          }
+          endpoint = '/ai/analyze-swap';
+          requestBody = {
+            swapData: {
+              fromToken,
+              toToken,
+              fromNetwork: Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === fromChain),
+              toNetwork: Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === toChain),
+              amount: fromAmount,
+              fromChainId: fromChain,
+              toChainId: toChain
+            }
+          };
+          break;
+
+        case 'market-insights':
+          endpoint = '/ai/market-insights';
+          requestBody = {
+            tokens: [fromToken, toToken].filter(Boolean),
+            priceData: currentQuote || {}
+          };
+          break;
+
+        case 'optimize-swap':
+          if (!fromToken || !toToken || !fromAmount) {
+            throw new Error('Please set up a swap first to optimize');
+          }
+          endpoint = '/ai/optimize-swap';
+          requestBody = {
+            swapRequest: {
+              fromToken,
+              toToken,
+              fromNetwork: Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === fromChain),
+              toNetwork: Object.keys(NETWORKS).find(key => NETWORKS[key].id.toString() === toChain),
+              amount: fromAmount,
+              fromChainId: fromChain,
+              toChainId: toChain
+            }
+          };
+          break;
+
+        case 'educational':
+          endpoint = '/ai/educational-content';
+          requestBody = {
+            topic: 'cross-chain swaps and DeFi'
+          };
+          break;
+
+        default:
+          throw new Error('Unknown action');
+      }
+
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const result = await response.json();
+      
+      let aiResponse;
+      if (result.success && result.data.success) {
+        aiResponse = result.data.analysis || result.data.insights || result.data.recommendations || result.data.content || result.data.fallback;
+      } else {
+        aiResponse = result.error || 'Sorry, I encountered an error. Please try again.';
+      }
+      
+      // Remove loading message and add AI response
+      setChatMessages(prev => prev.filter(msg => !msg.isLoading).concat({
+        id: (Date.now() + 2).toString(),
+        type: 'ai',
+        content: aiResponse,
+        timestamp: new Date()
+      }));
+
+    } catch (error) {
+      console.error('Quick action error:', error);
+      setChatMessages(prev => prev.filter(msg => !msg.isLoading).concat({
+        id: (Date.now() + 2).toString(),
+        type: 'ai',
+        content: error instanceof Error ? error.message : 'Sorry, I encountered an error. Please try again.',
+        timestamp: new Date()
+      }));
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
   return (
@@ -2255,6 +2357,48 @@ const SwapInterface = () => {
                     </div>
                   ))}
                   <div ref={chatEndRef} />
+                </div>
+
+                {/* Quick Action Buttons */}
+                <div className="px-4 py-2 border-t border-border/50 bg-background/20">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('analyze-swap')}
+                      disabled={isChatLoading}
+                      className="text-xs h-7"
+                    >
+                      🔍 Analyze Swap
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('market-insights')}
+                      disabled={isChatLoading}
+                      className="text-xs h-7"
+                    >
+                      📊 Market Insights
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('optimize-swap')}
+                      disabled={isChatLoading}
+                      className="text-xs h-7"
+                    >
+                      ⚡ Optimize
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('educational')}
+                      disabled={isChatLoading}
+                      className="text-xs h-7"
+                    >
+                      📚 Learn
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Chat Input */}
