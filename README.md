@@ -1,325 +1,278 @@
-# 🏆 TRUE DeFi Cross-Chain Swap Platform
+# 🚀 GenSwap - Next-Generation DeFi Trading Platform
 
+<div align="center">
 
-### 🎯 Project Overview
-A revolutionary TRUE DeFi cross-chain swap platform that prioritizes user sovereignty while maintaining professional-grade performance and security. Users maintain complete control over their wallets while the platform provides seamless cross-chain swapping capabilities.
+![GenSwap Logo](https://img.shields.io/badge/GenSwap-TRUE%20DeFi-blue?style=for-the-badge&logo=ethereum)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-green?style=for-the-badge&logo=vercel)](https://gen-swap-gilt.vercel.app)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
----
+**Professional-grade cross-chain DeFi platform built with cutting-edge technology stack**
 
-## 🚀 Key Features
+[🎥 Video Demo](https://www.loom.com/share/7315258044dc475ebb974fa5786773bb?sid=41f74f0c-a53a-4ff1-83e7-448e25a2af9c) • [🚀 Live App](https://gen-swap-gilt.vercel.app) • [📖 Documentation](#documentation)
 
-### 🔐 TRUE DeFi Architecture
-- **User Sovereignty**: All transactions signed in user's wallet
-- **No Server Private Keys**: Server provides API access only
-- **Decentralized User Experience**: Users control everything
-- **Centralized API Efficiency**: Professional performance
+</div>
 
-### 🔗 Advanced Wallet SDK Connection
-- **Automatic SDK Initialization**: Connects when wallet connects
-- **Global Instance Management**: Like database connections
-- **Real-time Status Tracking**: Professional monitoring
-- **Auto-reconnection**: Robust error recovery
-- **Connection Metrics**: Performance analytics
+## 🌟 What Makes GenSwap Special
 
-### 💰 Professional Swap Interface
-- **Real-time Balance Checking**: Live wallet balance display
-- **Automatic Quote Fetching**: Instant price discovery
-- **Cross-chain Support**: 8+ major networks
-- **Professional UI/UX**: Modern, responsive design
+GenSwap is a **TRUE DeFi** platform that revolutionizes cross-chain and single-chain token swapping with an innovative approach that prioritizes user security, AI-powered optimization, and seamless user experience.
 
----
+### 🔐 **TRUE DeFi Architecture**
+- **Zero Private Key Exposure**: Your keys never leave your wallet
+- **Client-Side Signing**: All transactions signed locally in your wallet
+- **Non-Custodial**: Complete control over your assets
+- **Decentralized Execution**: Direct on-chain interactions
 
-## 🏗️ Technical Architecture
+### 🤖 **AI-Powered Trading Intelligence**
+- Real-time market analysis and insights
+- Intelligent swap optimization recommendations
+- Risk assessment and mitigation strategies
+- Dynamic parameter optimization for better outcomes
 
-### Frontend Stack
-- **React 18** with TypeScript
-- **Wagmi** for Web3 integration
-- **Tailwind CSS** for styling
-- **Radix UI** for components
-- **Lucide React** for icons
+## ⚡ Core Features
 
-### Backend Stack
-- **Node.js** with Express
-- **1inch Cross-Chain SDK**
-- **Web3.js** for blockchain interaction
-- **Environment-based configuration**
+### 🔄 **Multi-Protocol Swap Solutions**
 
-### Security Model
-```
-User Wallet → Web3 Provider → 1inch SDK → Cross-Chain Swaps
-     ↓              ↓            ↓              ↓
-  MetaMask    Public Client   Global SDK    TRUE DeFi
-```
+| Feature | Fusion Intent (Cross-Chain) | Classic Swap (Single-Chain) |
+|---------|----------------------------|------------------------------|
+| **Type** | Cross-chain transfers | Same-chain optimized swaps |
+| **Speed** | Intent-based execution | Instant execution |
+| **Use Case** | Multi-chain portfolio management | Fast intra-chain trading |
+| **AI Enhancement** | Route optimization | Price impact minimization |
 
----
+### 🎯 **Advanced Trading Features**
+- **Smart Route Optimization**: AI-powered route selection for best prices
+- **MEV Protection**: Advanced protection against front-running
+- **Gas Optimization**: Dynamic gas fee optimization
+- **Slippage Management**: Intelligent slippage tolerance adjustment
+- **Real-time Analytics**: Comprehensive trading insights
 
-## 🎨 Professional UI Components
+### 🧠 **AI Chat Interface**
+- Natural language trading queries
+- Market analysis and insights
+- Strategy recommendations
+- Real-time portfolio analysis
 
-### 1. **Wallet SDK Connector**
-- Real-time connection status
-- Connection metrics and uptime
-- Auto-reconnection logic
-- Connection history tracking
-- Professional error handling
+## 🛠 Technology Stack
 
-### 2. **Advanced Swap Interface**
-- Live balance checking
-- Real-time quote updates
-- Professional loading states
-- Comprehensive error messages
-- Multi-chain token support
-
-### 3. **Status Indicators**
-- SDK connection status
-- Wallet connection status
-- Balance validation
-- Quote loading states
-
----
-
-## 🔧 Advanced Features
-
-### 1. **Professional SDK Management**
+### **Frontend**
 ```typescript
-// Global SDK instance (like database connection)
-let globalSDK = null;
-let sdkConnectionStatus = 'disconnected';
-
-// Professional SDK creation with user's provider
-function createSDKWithProvider(web3Provider) {
-  const sdk = new SDK({
-    url: "https://api.1inch.dev/fusion-plus",
-    authKey: process.env.DEV_PORTAL_KEY,
-    blockchainProvider: web3Provider,
-  });
-  return sdk;
-}
+React 18 + TypeScript + Vite
+├── UI Framework: Radix UI + Tailwind CSS + shadcn/ui
+├── Web3 Integration: Wagmi + RainbowKit + Viem
+├── State Management: React Query + Zustand
+├── Wallet Support: MetaMask, WalletConnect, Coinbase Wallet
+└── Cross-Chain: 1inch Cross-Chain SDK
 ```
 
-### 2. **Real-time Balance Checking**
-```typescript
-// Professional balance validation
-const hasSufficientBalance = () => {
-  const currentBalance = getCurrentBalance();
-  const requiredAmount = BigInt(Math.floor(parseFloat(fromAmount) * Math.pow(10, decimals)));
-  return userBalance >= requiredAmount;
-};
+### **Backend Architecture**
+```javascript
+Node.js + Express
+├── Fusion+ Implementation: Cross-chain intent processing
+├── Classic Swap Engine: Single-chain swap optimization
+├── AI Analysis Engine: Machine learning trade optimization
+├── Data APIs: Real-time market data aggregation
+└── Security Layer: Transaction validation & monitoring
 ```
 
-### 3. **Advanced Error Handling**
-```typescript
-// Comprehensive error recovery
-const initializeSDK = async (retryCount = 0): Promise<boolean> => {
-  try {
-    // SDK initialization logic
-    return true;
-  } catch (error) {
-    if (retryCount < 3 && autoReconnect) {
-      setTimeout(() => initializeSDK(retryCount + 1), 2000);
-    }
-    return false;
-  }
-};
-```
+### **Integrations**
+- **1inch Protocol**: DEX aggregation and routing
+- **1inch Fusion+**: Advanced cross-chain capabilities
+- **Multiple RPCs**: Redundant network connections
+- **Real-time Data**: Live price feeds and market data
 
----
+## 🚀 Quick Start
 
-## 📊 Performance Optimizations
+### Prerequisites
+- Node.js 18+ and pnpm
+- Ethereum wallet (MetaMask recommended)
+- 1inch API key for backend services
 
-### 1. **Global SDK Instance**
-- Single SDK instance for all operations
-- Connection pooling (like database connections)
-- Reduced initialization overhead
-- Memory efficiency
-
-### 2. **Caching Strategy**
-- SDK instance caching
-- Connection status tracking
-- Quote result caching
-- Balance caching
-
-### 3. **Error Recovery**
-- Automatic reconnection attempts
-- Graceful degradation
-- Fallback mechanisms
-- Circuit breaker pattern
-
----
-
-## 🔒 Security Features
-
-### 1. **User Wallet Sovereignty**
-- All transactions signed in user's wallet
-- No private keys stored on server
-- User controls all approvals and signatures
-- True decentralization
-
-### 2. **API Security**
-- Environment variable protection
-- Input validation and sanitization
-- Rate limiting and error handling
-- CORS configuration
-
-### 3. **Provider Security**
-- User's Web3 provider used for all operations
-- Server only provides API access
-- No server-side transaction signing
-- Secure communication
-
----
-
-## 🧪 Testing Strategy
-
-### 1. **Unit Tests**
-- SDK creation and validation
-- Error handling scenarios
-- Connection status management
-- Balance validation logic
-
-### 2. **Integration Tests**
-- End-to-end wallet connection
-- Cross-chain quote generation
-- Swap execution flow
-- Error recovery scenarios
-
-### 3. **Security Tests**
-- Private key protection
-- Input validation
-- API security measures
-- Provider security
-
----
-
-## 🚀 Deployment Guide
-
-### 1. **Environment Setup**
+### Frontend Setup
 ```bash
-# Required environment variables
-DEV_PORTAL_KEY=your_1inch_api_key
-PORT=9056
-NODE_ENV=production
-```
+# Clone the repository
+git clone https://github.com/aliveevie/gen-swap.git
+cd gen-swap
 
-### 2. **Installation**
-```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Start development server
-npm run dev
-
-# Build for production
-npm run build
+pnpm dev
 ```
 
-### 3. **API Endpoints**
-- `POST /api/test-sdk` - Initialize SDK connection
-- `GET /api/sdk-status` - Check SDK status
-- `POST /api/quote` - Get cross-chain quotes
-- `POST /api/swap` - Execute swaps
+### Backend Setup
+```bash
+# Navigate to backend
+cd backend-fusion-plus
+
+# Install backend dependencies
+pnpm install
+
+# Configure environment
+cp .env.example .env
+# Add your 1inch API key and RPC URLs
+
+# Start backend server
+node server.js
+```
+
+### Server Functions Setup
+```bash
+# Navigate to server directory
+cd server
+
+# Install server dependencies
+npm install
+
+# Configure environment
+cp env.example .env
+
+# Start server functions
+npm start
+```
+
+## 📚 Implementation Guides
+
+### 🔗 **Integration Documentation**
+
+#### **Fusion+ Cross-Chain Implementation**
+- [📋 Fusion+ Integration Guide](https://github.com/aliveevie/gen-swap/pull/2)
+- Complete cross-chain swap solution with intent-based execution
+- Advanced order management and tracking
+- Multi-chain asset management
+
+#### **Data APIs Integration** 
+- [📋 Data APIs Implementation](https://github.com/aliveevie/gen-swap/pull/1)
+- Real-time market data aggregation
+- Price feed optimization
+- Historical data analysis
+
+#### **Classic Swap Engine**
+- [📋 Classic Swap Integration](https://github.com/aliveevie/gen-swap/pull/3)
+- High-performance single-chain swaps
+- Gas optimization algorithms
+- AI-powered execution strategies
+
+## 🏗 Architecture Overview
+
+```mermaid
+graph TB
+    A[Frontend App] --> B[Wallet Connection]
+    A --> C[AI Chat Interface]
+    A --> D[Swap Interface]
+    
+    D --> E[Classic Swap Engine]
+    D --> F[Fusion+ Engine]
+    
+    E --> G[1inch API v6.1]
+    F --> H[1inch Fusion+ API]
+    
+    C --> I[AI Analysis Engine]
+    I --> J[Market Data APIs]
+    I --> K[Trading Optimization]
+    
+    B --> L[RainbowKit + Wagmi]
+    L --> M[Multiple Wallets]
+```
+
+## 📊 Project Structure
+
+```
+gen-swap/
+├── 🎨 Frontend (React + TypeScript)
+│   ├── src/components/     # UI components
+│   ├── src/hooks/         # Custom React hooks
+│   ├── src/lib/           # Utilities and helpers
+│   └── src/types/         # TypeScript definitions
+│
+├── ⚙️ Backend (Node.js + Express)
+│   ├── backend-fusion-plus/   # Main backend server
+│   ├── server/               # Additional server functions
+│   └── fusion-plus-order/    # Order management service
+│
+└── 📖 Documentation
+    ├── Implementation guides
+    ├── API documentation
+    └── Setup instructions
+```
+
+## 🎯 Key Differentiators
+
+### **Security First**
+- Non-custodial architecture with client-side transaction signing
+- Comprehensive input validation and sanitization
+- Real-time transaction monitoring and verification
+- Advanced error handling and recovery mechanisms
+
+### **AI-Enhanced Trading**
+- Machine learning algorithms for trade optimization
+- Real-time market sentiment analysis
+- Predictive analytics for price movements
+- Personalized trading recommendations
+
+### **Developer Experience**
+- Comprehensive TypeScript support
+- Extensive testing suite
+- Detailed API documentation
+- Modular and extensible architecture
+
+## 🔧 Development
+
+### **Testing**
+```bash
+# Run frontend tests
+pnpm test
+
+# Test backend functionality
+cd backend-fusion-plus && node test-classic-swap.js
+
+# Test server functions
+cd server && npm test
+```
+
+### **Building for Production**
+```bash
+# Build frontend
+pnpm build
+
+# Optimize backend
+cd backend-fusion-plus && npm run optimize
+
+# Deploy to Vercel
+vercel --prod
+```
+
+## 🌐 Live Deployment
+
+- **Production App**: [https://gen-swap-gilt.vercel.app](https://gen-swap-gilt.vercel.app)
+- **Staging Environment**: Available for testing new features
+- **CI/CD Pipeline**: Automated testing and deployment via Vercel
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on:
+- Code standards and best practices
+- Pull request process
+- Issue reporting guidelines
+- Development setup
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🔗 Links
+
+- **🏠 Website**: [GenSwap Live Demo](https://gen-swap-gilt.vercel.app)
+- **📹 Demo Video**: [Watch on Loom](https://www.loom.com/share/7315258044dc475ebb974fa5786773bb)
+- **🔗 Repository**: [GitHub](https://github.com/aliveevie/gen-swap)
+- **📧 Contact**: [Open an Issue](https://github.com/aliveevie/gen-swap/issues)
 
 ---
 
-## 🏆 Hackathon Advantages
+<div align="center">
 
-### 1. **Innovation**
-- TRUE DeFi architecture
-- User sovereignty focus
-- Professional implementation
-- Advanced Web3 integration
+**Built with ❤️ by the GenSwap Team**
 
-### 2. **Technical Excellence**
-- Advanced SDK management
-- Comprehensive error handling
-- Performance optimizations
-- Security best practices
+*Empowering the future of decentralized finance*
 
-### 3. **User Experience**
-- Seamless wallet integration
-- Real-time status updates
-- Professional UI/UX
-- Intuitive interface
-
-### 4. **Security**
-- No private key storage
-- User-controlled transactions
-- Industry best practices
-- TRUE DeFi principles
-
----
-
-## 📈 Future Roadmap
-
-### Phase 1: Enhanced Features
-- Multi-wallet support (WalletConnect)
-- Advanced analytics dashboard
-- Performance monitoring
-- Enhanced security features
-
-### Phase 2: Scaling
-- Multi-chain expansion
-- Advanced routing algorithms
-- Institutional features
-- Mobile optimization
-
-### Phase 3: Ecosystem
-- Developer SDK
-- API marketplace
-- Community features
-- Governance integration
-
----
-
-## 🎯 Technical Highlights
-
-### 1. **Professional SDK Connection**
-- Automatic initialization
-- Global instance management
-- Real-time monitoring
-- Robust error recovery
-
-### 2. **Advanced Balance Checking**
-- Real-time balance validation
-- Multi-token support
-- Professional error handling
-- User-friendly feedback
-
-### 3. **Cross-Chain Capabilities**
-- 8+ major networks
-- Professional quote generation
-- Seamless token bridging
-- Optimized routing
-
-### 4. **Security Excellence**
-- TRUE DeFi principles
-- User sovereignty
-- No server private keys
-- Industry best practices
-
----
-
-## 🏅 Conclusion
-
-This implementation demonstrates:
-- **Professional Web3 Development**
-- **TRUE DeFi Principles**
-- **User Sovereignty**
-- **Security Best Practices**
-- **Performance Optimization**
-- **Comprehensive Documentation**
-- **Advanced Error Handling**
-- **Professional UI/UX**
-
-Perfect for hackathon success and production deployment! 🏆
-
----
-
-## 📞 Contact
-
-For questions about this implementation:
-- **Architecture**: TRUE DeFi with user sovereignty
-- **Technology**: React + Node.js + 1inch SDK
-- **Security**: No private keys, user-controlled
-- **Performance**: Global SDK instances, caching, optimization
-
-**Ready for hackathon victory!** 🚀 
+</div>
