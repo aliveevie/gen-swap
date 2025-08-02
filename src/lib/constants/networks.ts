@@ -13,7 +13,7 @@ export const NETWORKS: Record<string, NetworkInfo> = {
 };
 
 // API base URL
-export const API_BASE_URL = 'http://localhost:9056/api';
+export const API_BASE_URL = 'https://gen-swap-server.vercel.app/api';
 
 // Token decimals mapping
 export const TOKEN_DECIMALS: Record<string, number> = {

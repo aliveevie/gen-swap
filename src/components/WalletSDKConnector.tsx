@@ -24,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAccount, useChainId, usePublicClient } from 'wagmi';
 
 // API base URL
-const API_BASE_URL = 'http://localhost:9056/api';
+const API_BASE_URL = 'https://gen-swap-server.vercel.app/api';
 
 interface SDKStatus {
   connectionStatus: string;

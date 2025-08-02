@@ -9,7 +9,7 @@ Create a `.env` file in the root directory with:
 VITE_1INCH_API_KEY=your_1inch_api_key_here
 
 # Server API URL
-VITE_API_BASE_URL=http://localhost:9056/api
+VITE_API_BASE_URL=https://gen-swap-server.vercel.app/api
 ```
 
 ## How It Works

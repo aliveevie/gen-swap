@@ -39,7 +39,7 @@ import { ClientSwapper } from "@/lib/clientSwapper";
 import { TOKENS } from "@/lib/data";
 
 // API base URL
-const API_BASE_URL = 'http://localhost:9056/api';
+const API_BASE_URL = 'https://gen-swap-server.vercel.app/api';
 
 // Network configurations with chain IDs
 const NETWORKS = {
