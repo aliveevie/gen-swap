@@ -1631,6 +1631,28 @@ const SwapInterface = () => {
           };
           break;
 
+        case 'token-price':
+          if (!fromToken || !fromChain) {
+            throw new Error('Please select a token and network first');
+          }
+          endpoint = '/ai/token-price';
+          requestBody = {
+            chainId: fromChain,
+            tokenAddress: getTokenAddress(fromChain, fromToken),
+            currency: 'USD'
+          };
+          break;
+
+        case 'gas-price':
+          if (!fromChain) {
+            throw new Error('Please select a network first');
+          }
+          endpoint = '/ai/gas-price';
+          requestBody = {
+            chainId: fromChain
+          };
+          break;
+
         case 'optimize-swap':
           if (!fromToken || !toToken || !fromAmount) {
             throw new Error('Please set up a swap first to optimize');
@@ -1670,11 +1692,43 @@ const SwapInterface = () => {
 
       const result = await response.json();
       
+      console.log('🔍 Quick action response:', {
+        action,
+        success: result.success,
+        data: result.data,
+        responseStructure: Object.keys(result.data || {})
+      });
+      
       let aiResponse;
       if (result.success && result.data.success) {
-        aiResponse = result.data.analysis || result.data.insights || result.data.recommendations || result.data.content || result.data.fallback;
+        // Handle different response structures from different AI endpoints
+        aiResponse = result.data.analysis || 
+                    result.data.insights || 
+                    result.data.recommendations || 
+                    result.data.content || 
+                    result.data.aiAnalysis || // New field for price analysis
+                    result.data.response || // General AI response
+                    result.data.fallback;
+        
+        console.log('🔍 AI Response extracted:', {
+          foundIn: aiResponse ? 'found' : 'not found',
+          analysis: !!result.data.analysis,
+          insights: !!result.data.insights,
+          recommendations: !!result.data.recommendations,
+          content: !!result.data.content,
+          aiAnalysis: !!result.data.aiAnalysis,
+          response: !!result.data.response,
+          fallback: !!result.data.fallback
+        });
       } else {
         aiResponse = result.error || 'Sorry, I encountered an error. Please try again.';
+        console.log('❌ AI Response error:', result.error);
+      }
+      
+      // Fallback if no AI response was found
+      if (!aiResponse || aiResponse.trim() === '') {
+        console.log('⚠️ No AI response found, using fallback');
+        aiResponse = `I've retrieved the data for your ${action} request, but I'm having trouble generating the analysis. Please try asking me about the ${action} again or check the console for more details.`;
       }
       
       // Remove loading message and add AI response
@@ -2406,6 +2460,24 @@ const SwapInterface = () => {
                       className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
                     >
                       📊 Market Insights
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('token-price')}
+                      disabled={isChatLoading}
+                      className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
+                    >
+                      💰 Token Price
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('gas-price')}
+                      disabled={isChatLoading}
+                      className="text-xs h-8 bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700"
+                    >
+                      ⛽ Gas Price
                     </Button>
                     <Button
                       variant="outline"

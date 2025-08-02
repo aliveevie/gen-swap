@@ -1320,7 +1320,7 @@ app.get('/api/price-feeds/status', async (req, res) => {
 // AI CHAT ENDPOINTS
 // ========================================
 
-// AI Chat endpoint
+// AI Chat endpoint with price query handling
 app.post('/api/ai/chat', async (req, res) => {
   try {
     const { message, context = {} } = req.body;
@@ -1331,6 +1331,18 @@ app.post('/api/ai/chat', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Message is required'
+      });
+    }
+
+    // Check if the message is asking for price information
+    const lowerMessage = message.toLowerCase();
+    if (lowerMessage.includes('price') || lowerMessage.includes('gas') || lowerMessage.includes('cost')) {
+      // Handle price-related queries
+      const result = await handlePriceQuery(message, context);
+      return res.json({
+        success: true,
+        data: result,
+        timestamp: new Date().toISOString()
       });
     }
 
@@ -1350,6 +1362,84 @@ app.post('/api/ai/chat', async (req, res) => {
     });
   }
 });
+
+// Helper function to handle price-related queries
+async function handlePriceQuery(message, context) {
+  try {
+    const lowerMessage = message.toLowerCase();
+    
+    // Check for gas price queries
+    if (lowerMessage.includes('gas') && context.fromChain) {
+      console.log('⛽ Handling gas price query for chain:', context.fromChain);
+      const result = await aiTools.getGasPriceWithAnalysis(parseInt(context.fromChain));
+      return {
+        success: true,
+        response: result.aiAnalysis,
+        gasData: result.gasData,
+        type: 'gas_price'
+      };
+    }
+    
+    // Check for token price queries
+    if (lowerMessage.includes('price') && context.fromToken && context.fromChain) {
+      console.log('💰 Handling token price query for:', context.fromToken, 'on chain:', context.fromChain);
+      
+      // Get token address from context or use a default
+      const tokenAddress = context.tokenAddress || getDefaultTokenAddress(context.fromToken, context.fromChain);
+      
+      if (tokenAddress) {
+        const result = await aiTools.getTokenPriceWithAnalysis(
+          parseInt(context.fromChain), 
+          tokenAddress, 
+          'USD'
+        );
+        return {
+          success: true,
+          response: result.aiAnalysis,
+          priceData: result.priceData,
+          type: 'token_price'
+        };
+      }
+    }
+    
+    // Default to general AI response
+    return await aiTools.generateAIResponse(message, context);
+    
+  } catch (error) {
+    console.error('❌ Price query handling failed:', error);
+    return {
+      success: false,
+      error: error.message,
+      fallback: 'I can help you check prices! Please make sure you have selected a token and network, then ask me about the price or gas fees.'
+    };
+  }
+}
+
+// Helper function to get default token addresses
+function getDefaultTokenAddress(tokenSymbol, chainId) {
+  const tokenAddresses = {
+    'USDC': {
+      '1': '0xA0b86a33E6441b8C4C8C8C8C8C8C8C8C8C8C8C8C', // Ethereum
+      '137': '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // Polygon
+      '42161': '0xaf88d065e77c8cc2239327c5edb3a432268e5831', // Arbitrum
+      '8453': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' // Base
+    },
+    'USDT': {
+      '1': '0xdAC17F958D2ee523a2206206994597C13D831ec7', // Ethereum
+      '137': '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', // Polygon
+      '42161': '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', // Arbitrum
+      '8453': '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb' // Base
+    },
+    'WETH': {
+      '1': '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // Ethereum
+      '137': '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // Polygon
+      '42161': '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum
+      '8453': '0x4200000000000000000000000000000000000006' // Base
+    }
+  };
+  
+  return tokenAddresses[tokenSymbol]?.[chainId] || null;
+}
 
 // AI Swap Analysis endpoint
 app.post('/api/ai/analyze-swap', async (req, res) => {
@@ -1409,6 +1499,99 @@ app.post('/api/ai/market-insights', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get market insights'
+    });
+  }
+});
+
+// AI Token Price endpoint
+app.post('/api/ai/token-price', async (req, res) => {
+  try {
+    const { chainId, tokenAddress, currency = 'USD' } = req.body;
+    
+    console.log('💰 AI Token price request received:', { chainId, tokenAddress, currency });
+    
+    if (!chainId || !tokenAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Chain ID and token address are required'
+      });
+    }
+
+    const result = await aiTools.getTokenPriceWithAnalysis(parseInt(chainId), tokenAddress, currency);
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Token price error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get token price with analysis'
+    });
+  }
+});
+
+// AI Gas Price endpoint
+app.post('/api/ai/gas-price', async (req, res) => {
+  try {
+    const { chainId } = req.body;
+    
+    console.log('⛽ AI Gas price request received for chain:', chainId);
+    
+    if (!chainId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Chain ID is required'
+      });
+    }
+
+    const result = await aiTools.getGasPriceWithAnalysis(parseInt(chainId));
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Gas price error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get gas price with analysis'
+    });
+  }
+});
+
+// AI Comprehensive Price Analysis endpoint
+app.post('/api/ai/comprehensive-price-analysis', async (req, res) => {
+  try {
+    const { tokens } = req.body;
+    
+    console.log('📊 AI Comprehensive price analysis request received for', tokens?.length || 0, 'tokens');
+    
+    if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tokens array is required and must not be empty'
+      });
+    }
+
+    const result = await aiTools.getComprehensivePriceAnalysis(tokens);
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ AI Comprehensive price analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get comprehensive price analysis'
     });
   }
 });

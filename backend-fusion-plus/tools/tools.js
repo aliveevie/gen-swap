@@ -33,7 +33,7 @@ class DeFiTools {
   }
 
   /**
-   * Get gas price information from 1inch API
+   * Get gas price information from 1inch API (v1.6)
    * @param {number} chainId - Chain ID
    * @returns {Promise<Object>} Gas price data
    */
@@ -43,23 +43,32 @@ class DeFiTools {
         throw new Error('DEV_PORTAL_KEY not configured');
       }
 
-      console.log(`⛽ Getting gas price for chain ${chainId}...`);
+      console.log(`⛽ Getting gas price for chain ${chainId} using 1inch API v1.6...`);
 
-      const response = await axios.get(`${this.baseURL}/gas-price/v1.1/${chainId}`, {
+      const url = `https://api.1inch.dev/gas-price/v1.6/${chainId}`;
+
+      const config = {
         headers: {
           'Authorization': `Bearer ${this.devPortalKey}`,
           'Accept': 'application/json'
         },
+        params: {},
+        paramsSerializer: {
+          indexes: null,
+        },
         timeout: 10000
-      });
+      };
 
-      console.log(`✅ Gas price retrieved for chain ${chainId}`);
+      const response = await axios.get(url, config);
+
+      console.log(`✅ Gas price retrieved for chain ${chainId}:`, response.data);
 
       return {
         success: true,
         data: response.data,
         chainId: chainId,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        source: '1inch_gas_price_api_v1.6'
       };
 
     } catch (error) {
@@ -410,6 +419,139 @@ class DeFiTools {
   }
 
   /**
+   * Get token price from 1inch Price Feeds API
+   * @param {number} chainId - Chain ID
+   * @param {string} tokenAddress - Token contract address
+   * @param {string} currency - Currency for price (optional, defaults to USD)
+   * @returns {Promise<Object>} Token price data
+   */
+  async getTokenPrice(chainId, tokenAddress, currency = 'USD') {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      console.log(`💰 Getting token price for ${tokenAddress} on chain ${chainId}...`);
+
+      const url = currency === 'USD' 
+        ? `https://api.1inch.dev/price/v1.1/${chainId}/${tokenAddress}?currency=USD`
+        : `https://api.1inch.dev/price/v1.1/${chainId}/${tokenAddress}`;
+
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${this.devPortalKey}`,
+          'Accept': 'application/json'
+        },
+        timeout: 10000
+      });
+
+      console.log(`✅ Token price retrieved for ${tokenAddress}:`, response.data);
+
+      return {
+        success: true,
+        data: response.data,
+        chainId: chainId,
+        tokenAddress: tokenAddress,
+        currency: currency,
+        timestamp: new Date().toISOString(),
+        source: '1inch_price_feeds_api'
+      };
+
+    } catch (error) {
+      console.error(`❌ Token price retrieval failed for ${tokenAddress}:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get token price',
+        chainId: chainId,
+        tokenAddress: tokenAddress,
+        currency: currency,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get multiple token prices in batch
+   * @param {Array} tokens - Array of {chainId, tokenAddress, currency} objects
+   * @returns {Promise<Object>} Batch price data
+   */
+  async getBatchTokenPrices(tokens) {
+    try {
+      if (!this.devPortalKey) {
+        throw new Error('DEV_PORTAL_KEY not configured');
+      }
+
+      if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
+        throw new Error('Tokens array is required and must not be empty');
+      }
+
+      console.log(`💰 Getting batch token prices for ${tokens.length} tokens...`);
+
+      const pricePromises = tokens.map(async (token) => {
+        try {
+          const currency = token.currency || 'USD';
+          const url = currency === 'USD' 
+            ? `https://api.1inch.dev/price/v1.1/${token.chainId}/${token.tokenAddress}?currency=USD`
+            : `https://api.1inch.dev/price/v1.1/${token.chainId}/${token.tokenAddress}`;
+
+          const response = await axios.get(url, {
+            headers: {
+              'Authorization': `Bearer ${this.devPortalKey}`,
+              'Accept': 'application/json'
+            },
+            timeout: 10000
+          });
+
+          return {
+            chainId: parseInt(token.chainId),
+            tokenAddress: token.tokenAddress,
+            currency: currency,
+            price: response.data,
+            success: true
+          };
+        } catch (error) {
+          return {
+            chainId: parseInt(token.chainId),
+            tokenAddress: token.tokenAddress,
+            currency: token.currency || 'USD',
+            error: error.message,
+            success: false
+          };
+        }
+      });
+
+      const results = await Promise.all(pricePromises);
+      const successfulResults = results.filter(result => result.success);
+      const failedResults = results.filter(result => !result.success);
+
+      console.log(`✅ Batch price data retrieved: ${successfulResults.length} successful, ${failedResults.length} failed`);
+
+      return {
+        success: true,
+        data: {
+          results: results,
+          successful: successfulResults,
+          failed: failedResults,
+          total: results.length,
+          timestamp: new Date().toISOString(),
+          source: '1inch_price_feeds_api_batch'
+        }
+      };
+
+    } catch (error) {
+      console.error(`❌ Batch token price retrieval failed:`, error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get batch token prices',
+        tokens: tokens,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Get network statistics
    * @param {number} chainId - Chain ID
    * @returns {Promise<Object>} Network statistics
@@ -462,6 +604,8 @@ module.exports = {
   DeFiTools,
   deFiTools,
   getGasPrice: (chainId) => deFiTools.getGasPrice(chainId),
+  getTokenPrice: (chainId, tokenAddress, currency) => deFiTools.getTokenPrice(chainId, tokenAddress, currency),
+  getBatchTokenPrices: (tokens) => deFiTools.getBatchTokenPrices(tokens),
   getTokenMetadata: (chainId, tokenAddress) => deFiTools.getTokenMetadata(chainId, tokenAddress),
   getTokenList: (chainId) => deFiTools.getTokenList(chainId),
   getWalletBalances: (chainId, walletAddress) => deFiTools.getWalletBalances(chainId, walletAddress),

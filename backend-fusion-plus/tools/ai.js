@@ -259,6 +259,181 @@ Make it beginner-friendly but informative for advanced users too.`;
   }
 
   /**
+   * Get token price information with AI analysis
+   * @param {number} chainId - Chain ID
+   * @param {string} tokenAddress - Token contract address
+   * @param {string} currency - Currency for price
+   * @returns {Promise<Object>} Token price with AI analysis
+   */
+  async getTokenPriceWithAnalysis(chainId, tokenAddress, currency = 'USD') {
+    try {
+      console.log(`🤖 Getting token price with AI analysis for ${tokenAddress} on chain ${chainId}...`);
+
+      // Import the tools module to get price data
+      const { getTokenPrice } = require('./tools.js');
+      
+      const priceResult = await getTokenPrice(chainId, tokenAddress, currency);
+      
+      if (!priceResult.success) {
+        throw new Error(`Failed to get token price: ${priceResult.error}`);
+      }
+
+      const priceData = priceResult.data;
+      const prompt = `Analyze this token price data and provide insights:
+
+Token Price Data:
+- Chain ID: ${chainId}
+- Token Address: ${tokenAddress}
+- Currency: ${currency}
+- Price Data: ${JSON.stringify(priceData, null, 2)}
+
+Please provide:
+1. Current price analysis
+2. Price trends (if available)
+3. Market context
+4. Trading recommendations
+5. Risk assessment
+
+Make it user-friendly and actionable.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { priceData, chainId, tokenAddress, currency });
+      
+      return {
+        success: true,
+        priceData: priceData,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        chainId: chainId,
+        tokenAddress: tokenAddress,
+        currency: currency,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Token price analysis failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get token price with analysis',
+        chainId: chainId,
+        tokenAddress: tokenAddress,
+        currency: currency,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get gas price information with AI analysis
+   * @param {number} chainId - Chain ID
+   * @returns {Promise<Object>} Gas price with AI analysis
+   */
+  async getGasPriceWithAnalysis(chainId) {
+    try {
+      console.log(`🤖 Getting gas price with AI analysis for chain ${chainId}...`);
+
+      // Import the tools module to get gas price data
+      const { getGasPrice } = require('./tools.js');
+      
+      const gasResult = await getGasPrice(chainId);
+      
+      if (!gasResult.success) {
+        throw new Error(`Failed to get gas price: ${gasResult.error}`);
+      }
+
+      const gasData = gasResult.data;
+      const prompt = `Analyze this gas price data and provide insights:
+
+Gas Price Data for Chain ${chainId}:
+${JSON.stringify(gasData, null, 2)}
+
+Please provide:
+1. Current gas price analysis
+2. Cost comparison (slow vs fast)
+3. Transaction timing recommendations
+4. Cost optimization tips
+5. Network congestion assessment
+
+Make it practical for users planning transactions.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { gasData, chainId });
+      
+      return {
+        success: true,
+        gasData: gasData,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        chainId: chainId,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Gas price analysis failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get gas price with analysis',
+        chainId: chainId,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get comprehensive price analysis for multiple tokens
+   * @param {Array} tokens - Array of {chainId, tokenAddress, currency} objects
+   * @returns {Promise<Object>} Comprehensive price analysis
+   */
+  async getComprehensivePriceAnalysis(tokens) {
+    try {
+      console.log(`🤖 Getting comprehensive price analysis for ${tokens.length} tokens...`);
+
+      // Import the tools module to get batch price data
+      const { getBatchTokenPrices } = require('./tools.js');
+      
+      const batchResult = await getBatchTokenPrices(tokens);
+      
+      if (!batchResult.success) {
+        throw new Error(`Failed to get batch token prices: ${batchResult.error}`);
+      }
+
+      const priceData = batchResult.data;
+      const prompt = `Analyze this batch token price data and provide comprehensive insights:
+
+Batch Token Price Data:
+${JSON.stringify(priceData, null, 2)}
+
+Please provide:
+1. Overall market analysis
+2. Price comparisons between tokens
+3. Trading opportunities
+4. Portfolio recommendations
+5. Risk assessment
+6. Market trends
+
+Focus on actionable insights for DeFi users.`;
+
+      const aiResult = await this.generateAIResponse(prompt, { priceData, tokens });
+      
+      return {
+        success: true,
+        priceData: priceData,
+        aiAnalysis: aiResult.response || aiResult.fallback,
+        tokens: tokens,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('❌ Comprehensive price analysis failed:', error.message);
+      
+      return {
+        success: false,
+        error: error.message || 'Failed to get comprehensive price analysis',
+        tokens: tokens,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Optimize swap parameters with AI
    * @param {Object} swapRequest - Swap request parameters
    * @returns {Promise<Object>} Optimized parameters
@@ -313,5 +488,8 @@ module.exports = {
   getMarketInsights: (tokens, priceData) => aiTools.getMarketInsights(tokens, priceData),
   generateEducationalContent: (topic) => aiTools.generateEducationalContent(topic),
   optimizeSwapParameters: (swapRequest) => aiTools.optimizeSwapParameters(swapRequest),
+  getTokenPriceWithAnalysis: (chainId, tokenAddress, currency) => aiTools.getTokenPriceWithAnalysis(chainId, tokenAddress, currency),
+  getGasPriceWithAnalysis: (chainId) => aiTools.getGasPriceWithAnalysis(chainId),
+  getComprehensivePriceAnalysis: (tokens) => aiTools.getComprehensivePriceAnalysis(tokens),
   validateConfiguration: () => aiTools.validateConfiguration()
 }; 
